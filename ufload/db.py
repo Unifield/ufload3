@@ -1,4 +1,4 @@
-import os, sys, subprocess, tempfile, hashlib, urllib, oerplib, zipfile, base64
+import os, sys, subprocess, tempfile, hashlib, urllib.request, urllib.parse, urllib.error, oerplib, zipfile, base64
 import ufload
 import re
 from base64 import encodestring
@@ -574,12 +574,12 @@ def killCons(args, db):
 
 def get_hwid(args):
     if sys.platform == 'win32':
-        import _winreg
+        import winreg
         try:
-            with _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE,
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
                                  "SYSTEM\ControlSet001\services\eventlog\Application\openerp-web-6.0",
-                                 0, _winreg.KEY_READ) as registry_key:
-                hwid, regtype = _winreg.QueryValueEx(registry_key, "HardwareId")
+                                 0, winreg.KEY_READ) as registry_key:
+                hwid, regtype = winreg.QueryValueEx(registry_key, "HardwareId")
                 ufload.progress("Hardware id from registry key: %s" % hwid)
                 return hwid
         except WindowsError as e:
@@ -674,11 +674,11 @@ def _allDbs(args):
     else:
         v = _run_out(args, mkpsql(args, 'select datname from pg_database where datistemplate = false and datname != \'postgres\''))
         
-    return filter(len, map(lambda x: x.strip(), v))
+    return list(filter(len, [x.strip() for x in v]))
 
 def exists(args, db):
     v = _run_out(args, mkpsql(args, 'select datname from pg_database where datname = \'%s\'' % db))
-    v = filter(len, map(lambda x: x.strip(), v))
+    v = list(filter(len, [x.strip() for x in v]))
     return len(v)==1 and v[0] == db
 
 # These two functions read and write from a little "about" table
@@ -694,7 +694,7 @@ def get_sync_server_len(args, db='SYNC_SERVER_LOCAL'):
         l = _run_out(args, mkpsql(args, 'select length from about', db))
         if len(l) < 1:
             return -1
-        return int(filter(len, l)[0])
+        return int(list(filter(len, l))[0])
     except subprocess.CalledProcessError:
         pass
     return -1

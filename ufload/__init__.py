@@ -1,6 +1,6 @@
-import cloud; assert cloud
-import db; assert db
-import httpfile; assert httpfile
+from . import cloud; assert cloud
+from . import db; assert db
+from . import httpfile; assert httpfile
 
 __version__ = '0.279'
 

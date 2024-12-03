@@ -6,8 +6,8 @@ import collections
 import logging
 import base64
 import sys
-import webdav
-from urlparse import urlparse
+from . import webdav
+from urllib.parse import urlparse
 
 
 import ufload
@@ -28,7 +28,7 @@ def _decrypt(pwd):
         return x
     except:
         ufload.progress('Unable to decode password')
-        print sys.exc_info()[0]
+        print(sys.exc_info()[0])
 
 
 def instance_to_dir(instance):
@@ -99,7 +99,7 @@ def get_onedrive_connection(args):
         dav = webdav.Client(url.netloc, port=url.port, protocol=url.scheme, username=info['login'],
                             password=info['password'], path=path)
         return dav
-    except webdav.ConnectionFailed, e:
+    except webdav.ConnectionFailed as e:
         ufload.progress('Unable to connect: {}'.format(e))
         ufload.progress('Cannot proceed without connection, exiting program.')
         exit(1)
@@ -281,7 +281,7 @@ class StatusFile(object):
         self.n += len(data)
         if self.tot is not None:
             pct = int(self.n/self.tot*100)
-            if pct > self.next:
+            if pct > self.__next__:
                 self.next = (pct/10)*10+10
                 self.progress(pct)
         self.fout.write(data)

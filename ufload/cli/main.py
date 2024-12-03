@@ -1,4 +1,4 @@
-import ConfigParser, argparse, os, sys, oerplib
+import configparser, argparse, os, sys, oerplib
 import requests
 import requests.auth
 import subprocess
@@ -20,7 +20,7 @@ starttime = time.strftime('%Y%m%d%H%M%S')
 def _progress(p):
     global _logs, args
     p = time.strftime('%H:%M:%S') + ': ' + p
-    print >> sys.stderr, p
+    print(p, file=sys.stderr)
     _logs.append(p)
 
     if args.local:
@@ -281,7 +281,7 @@ def _multiRestore(args):
         for to_r in  to_remove:
             del(instances[to_r])
 
-    ufload.progress("Instances to be restored: %s" % ", ".join(instances.keys()))
+    ufload.progress("Instances to be restored: %s" % ", ".join(list(instances.keys())))
     dbs=[]
     pattern = re.compile('.*-[A-Z]{1}[a-z]{2}\.zip$')
 
@@ -308,7 +308,7 @@ def _multiRestore(args):
 
             try:
                 filename = dav.download(j[0],j[1])
-            except Exception, e:
+            except Exception as e:
                 ufload.progress("Error upload %s" % e)
                 continue
 
@@ -488,7 +488,7 @@ def _cmdLs(args):
 
     for i in instances:
         for j in instances[i]:
-            print j[1]
+            print(j[1])
             # only show the latest for each one
             break
 
@@ -537,7 +537,7 @@ def _cmdUpgrade(args):
             return 1
 
         #Download the patch
-        patches.sort(key=lambda s: map(int, re.split('\.|-|p',re.search('uf(.+?)\.patch\.zip',  s[1], re.I).group(1))))
+        patches.sort(key=lambda s: list(map(int, re.split('\.|-|p',re.search('uf(.+?)\.patch\.zip',  s[1], re.I).group(1)))))
         i = 0
         for j in patches:
             filename = dav.download(j[2], j[1])
@@ -701,7 +701,7 @@ def _cmdUpgrade(args):
         if len(patches) == 0:
             ufload.progress("No User Rights found.")
             return 1
-        patches.sort(key=lambda s: map(int, re.split('\.|-|p',re.search('User Rights v(.+?).zip',  s[1], re.I).group(1))))
+        patches.sort(key=lambda s: list(map(int, re.split('\.|-|p',re.search('User Rights v(.+?).zip',  s[1], re.I).group(1)))))
 
         urfilename = None
         for j in patches:
@@ -850,7 +850,7 @@ def parse():
     pClean.set_defaults(func=_cmdClean)
 
     # read from $HOME/.ufload first
-    conffile = ConfigParser.SafeConfigParser()
+    conffile = configparser.SafeConfigParser()
     if sys.platform == "win32":
         conffile.read('%s/ufload.txt' % _home())
     else:
