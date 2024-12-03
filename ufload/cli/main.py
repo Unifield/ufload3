@@ -385,11 +385,12 @@ def _multiRestore(args):
     return 0, dbs
 
 def _syncRestore(args, dbs, ss):
-    if args.db_prefix:
-        sdb = '%s_%s' % (args.db_prefix, ss)
-    else:
-        sdb = ss
+    #if args.db_prefix:
+    #    sdb = '%s_%s' % (args.db_prefix, ss)
+    #else:
+    #    sdb = ss
 
+    sdb = ss
     #Which Sync Server do we need?
     if args.synclight:
         #url = "http://sync-prod_dump.uf5.unifield.org/SYNC_SERVER_LIGHT_WITH_MASTER"
