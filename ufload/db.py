@@ -18,7 +18,7 @@ def _run(args, cmd, get_out=False, silent=False):
             out = ""
             try:
                 out = subprocess.check_output(cmd, env=pg_pass(args), stderr=subprocess.STDOUT)
-                return 0, out
+                return 0, str(out, 'utf8')
             except subprocess.CalledProcessError as exc:
                 return exc.returncode, exc.output
         else:
@@ -504,7 +504,7 @@ def delive(args, db):
                 % (new_user, new_user.lower(), new_user_pass), db, silent=True)
             if rc != 0:
                 return rc
-            for new_group in  groups.split(','):
+            for new_group in groups.split(','):
                 rc = psql(args, " insert into res_groups_users_rel (uid, gid) (select %s, id from res_groups where name='%s');" % (new_userid, new_group), db)
                 if rc != 0:
                     return rc
