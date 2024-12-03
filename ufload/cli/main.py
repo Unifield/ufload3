@@ -1,4 +1,5 @@
-import configparser, argparse, os, sys, oerplib
+import configparser, argparse, os, sys
+import xmlrpc.client
 import requests
 import requests.auth
 import subprocess
@@ -587,19 +588,19 @@ def _cmdUpgrade(args):
             ufload._progress("Connecting instance %s to sync server %s" % (instance, ss))
             try:
                 ufload.db.connect_instance_to_sync_server(args, ss, instance)
-            except oerplib.error.RPCError as err:
+            except xmlrpc.client.Fault as err:
                 if err[0].endswith("OpenERP version doesn't match database version!"):
                     ufload.progress("new versions is present")
                     update_available = True
                 else:
-                    raise oerplib.error.RPCError(err)
+                    raise xmlrpc.client.Fault(err)
 
 
             i = 0
             while update_src:
                 try:
                     ufload.db.manual_sync(args, ss, instance)
-                except oerplib.error.RPCError as err:
+                except xmlrpc.client.Fault as err:
                     regex = r""".*Cannot check for updates: There is/are [0-9]+ revision\(s\) available."""
                     flags = re.S
                     if re.compile(regex, flags).match(err[0]):
@@ -607,11 +608,11 @@ def _cmdUpgrade(args):
                         break
                     elif err[0].endswith('Authentification Failed, please contact the support'):
                         if i >= 10:
-                            raise oerplib.error.RPCError(err)
+                            raise xmlrpc.client.Fault(err)
                         time.sleep(1)
                         i += 1
                     else:
-                        raise oerplib.error.RPCError(err)
+                        raise xmlrpc.client.Fault(err)
                 update_src = False
                 break
             if not update_src:
@@ -661,7 +662,7 @@ def _cmdUpgrade(args):
                 update_modules = False
                 try:
                     ufload.db.connect_rpc(args, ss, instance)
-                except oerplib.error.RPCError as err:
+                except xmlrpc.client.Fault as err:
                     ufload._progress("error.RPCError: {0}".format(err[0]))
                     # regex = r""".*Cannot check for updates: There is/are [0-9]+ revision\(s\) available."""
                     # flags = re.S
@@ -671,7 +672,7 @@ def _cmdUpgrade(args):
                     if err[0].endswith('ServerUpdate: Server is updating modules ...'):
                         update_modules = True
                     else:
-                        raise oerplib.error.RPCError(err)
+                        raise xmlrpc.client.Fault(err)
                 except socket.error as err:
                     update_modules = True
                 for j in range(sleep_time):
@@ -712,12 +713,12 @@ def _cmdUpgrade(args):
             summarize['user_rights_updated'] = re.search('User Rights v(.+?).zip',  urfilename, re.I).group(1)
             try:
                 ufload.db.installUserRights(args, ss)
-            except oerplib.error.RPCError as err:
+            except xmlrpc.client.Fault as err:
                 if err[0].endswith('exists on server'):
                     ufload.progress(err[0].split("\n")[-1])
                     summarize['user_rights_updated'] = ''
                 else:
-                    raise oerplib.error.RPCError(err)
+                    raise xmlrpc.client.Fault(err)
             os.remove(urfilename)
 
 
@@ -850,7 +851,7 @@ def parse():
     pClean.set_defaults(func=_cmdClean)
 
     # read from $HOME/.ufload first
-    conffile = configparser.SafeConfigParser()
+    conffile = configparser.ConfigParser()
     if sys.platform == "win32":
         conffile.read('%s/ufload.txt' % _home())
     else:

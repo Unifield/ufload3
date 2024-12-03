@@ -1,7 +1,7 @@
-import os, sys, subprocess, tempfile, hashlib, urllib.request, urllib.parse, urllib.error, oerplib, zipfile, base64
+import os, sys, subprocess, tempfile, hashlib, urllib.request, urllib.parse, urllib.error, zipfile, base64
+import xmlrpc.client
 import ufload
 import re
-from base64 import encodestring
 
 def _run_out(args, cmd):
     try:
@@ -423,7 +423,7 @@ def delive(args, db):
             psql(args, "delete from res_groups_users_rel where gid in (select g.id from res_groups g where g.visible_res_groups='f');", db)
 
     if args.logo:
-         psql(args, "update res_company set logo='%s';" % base64.encodestring(open(args.logo, 'rb').read()), db)
+         psql(args, "update res_company set logo='%s';" % str(base64.b64encode(open(args.logo, 'rb').read()), 'utf8'), db)
 
     if args.banner:
          psql(args, "update communication_config set message=$ESC$%s$ESC$;" % args.banner, db)
@@ -591,9 +591,8 @@ def get_hwid(args):
         for line in os.popen("/sbin/ifconfig"):
             if line.find('Ether') > -1:
                 mac.append(line.split()[4])
-                    
         mac.sort()
-        hw_hash = hashlib.md5(''.join(mac)).hexdigest()
+        hw_hash = hashlib.md5((''.join(mac)).encode('utf8')).hexdigest()
         return hw_hash
 
 def _db_to_instance(args, db):
@@ -722,22 +721,20 @@ def connect_instance_to_sync_server(args, sync_server, db):
         port = int(args.sync_xmlrpcport)
 
     try:
-        #oerp = oerplib.OERP('127.0.0.1', protocol='xmlrpc', port=12173, version='6.0')
         ufload.progress('Connecting instance %s to %s' % (db, sync_server))
-        #netrpc = oerplib.OERP('127.0.0.1', protocol='xmlrpc', port=12173, timeout=1000, version='6.0')
-        #netrpc = oerplib.OERP('127.0.0.1', protocol='xmlrpc', port=8069, timeout=1000, version='6.0')
-        netrpc = oerplib.OERP('127.0.0.1', protocol='xmlrpc', port=port, timeout=1000, version='6.0')
-        netrpc.login(args.adminuser.lower(), args.adminpw, database=db)
-        conn_manager = netrpc.get('sync.client.sync_server_connection')
-        conn_ids = conn_manager.search([])
-        #conn_manager.write(conn_ids, {'password': args.adminpw})
-        conn_manager.write(conn_ids, {'login' : args.connectionuser, 'password': args.connectionpw})
-        conn_manager.connect()
-        #netrpc.get('sync.client.entity').sync()
-    except oerplib.error.RPCError as e:
-         ufload.progress("Error: unable to connect instance to the sync server: %s" % e.args[0])
+
+        sock = xmlrpc.client.ServerProxy('http://127.0.0.1:%s/xmlrpc/common' % (port, ))
+        uid = sock.login(db, args.adminuser.lower(), args.adminpw)
+        sock = xmlrpc.client.ServerProxy('http://127.0.0.1:%s/xmlrpc/object' % (port, ))
+
+
+        conn_ids = sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'search', [])
+        sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'write', conn_ids, {'login' : args.connectionuser, 'password': args.connectionpw})
+        sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', conn_ids, 'connect')
+    except xmlrpc.client.Fault as e:
+         ufload.progress("Error: unable to connect instance to the sync server: %s" % e)
     except:
-         ufload.progress("Unexpected error: unable to connect instance to the sync server: %s" % sys.exc_info()[0])
+        ufload.progress("Unexpected error: unable to connect instance to the sync server: %s" % sys.exc_info()[0])
 
 def manual_sync(args, sync_server, db):
     if db.startswith('SYNC_SERVER'):
@@ -764,10 +761,34 @@ def manual_upgrade(args, sync_server, db):
         result = sync_obj.do_upgrade(sync_ids)
     return result
 
-def connect_rpc(args, db):
-    netrpc = oerplib.OERP('127.0.0.1', protocol='xmlrpc', port=8069, timeout=1000, version='6.0')
-    netrpc.login(args.adminuser.lower(), args.adminpw, database=db)
-    return netrpc
+class connect_rpc:
+    def __init__(self, args, db):
+        port = 8069
+        sock = xmlrpc.client.ServerProxy('http://127.0.0.1:%s/xmlrpc/common' % (port, ))
+        self.uid = sock.login(db, args.adminuser.lower(), args.adminpw)
+        if not uid:
+            raise Exception('%s, Wrong %s password' % (db, args.adminuser.lower()))
+        self.db = db
+        self.password = args.adminuser.lower()
+        self.sock = xmlrpc.client.ServerProxy('http://127.0.0.1:%s/xmlrpc/object' % (port, ))
+
+    def get(self, model):
+        return oerp_obj(self.sock, self.db, self.uid, self.password, model)
+
+class oerp_obj:
+    def __init__(sock, db, uid, password, model):
+        self.sock = sock
+        self.db = db
+        self.uid = uid
+        self.password = password
+        self.model = model
+
+    def __getattr__(self, method):
+        def rpc_method(*args, **kwargs):
+            """Return the result of the RPC request."""
+            return self.sock.execute(self.db, self.uid, self.password, method, *args, **kwargs)
+        return rpc_method
+
 
 def _parse_dsn(dsn):
     res = {}
@@ -901,20 +922,17 @@ def installUserRights(args, db='SYNC_SERVER_LOCAL'):
     # netrpc.config['run_foreground'] = True
     ufload.progress("Download User Rights")
 
-    load_id = sync_obj.create( {'name': ur_name, 'zip_file': encodestring(plain_zip)})
+    load_id = sync_obj.create( {'name': ur_name, 'zip_file': str(base64.b64encode(plain_zip), 'utf8')})
     result = sync_obj.import_zip( [load_id], context)
     result = sync_obj.read( load_id, ['state', 'message'])
     if result['state'] != 'done':
         ufload.progress('Unable to load UR: %s' % result['message'])
-        raise oerplib.error.RPCErro(result['message'])
+        raise xmlrpc.client.Fault(result['message'])
     else:
         result = sync_obj.done( [load_id])
         ufload.progress('New UR file loaded')
         return result
 
-    # loader = self.pool.get('sync_server.user_rights.add_file')
-    # load_id = loader.create(cr, uid, {'name': ur_name, 'zip_file': encodestring(plain_zip)}, context=context)
-    # loader.import_zip(cr, uid, [load_id], context=context)
 
     return result
 

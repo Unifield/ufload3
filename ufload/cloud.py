@@ -24,7 +24,7 @@ def _decrypt(pwd):
     pwd = pwd.strip()
     x = pwd[4:]
     try:
-        x = base64.b64decode(x)
+        x = str(base64.b64decode(x), 'utf8')
         return x
     except:
         ufload.progress('Unable to decode password')
