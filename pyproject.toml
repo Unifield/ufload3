@@ -1,0 +1,24 @@
+[project]
+name = "ufload3"
+version = "1.0"
+authors = [
+  { name="MSF" },
+]
+description = "UniField  python3 loader"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "Office365-REST-Python-Client==2.3.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/Unifield/ufload3"
+
+[project.scripts]
+ufload3 = "ufload3.cli.main:main"
