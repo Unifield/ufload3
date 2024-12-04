@@ -27,12 +27,7 @@ def find_version(*file_paths):
 
 
 install_requires = [
-    'pyOpenSSL==19.1.0',
-    'ndg-httpsclient==0.5.1',
-    'pyasn1==0.4.8',
-    'easywebdav==1.2.0',
-    'pybase64==0.5.0',
-    'Office365-REST-Python-Client==2.1.5'
+    'Office365-REST-Python-Client==2.3.3'
 ]
 
 tests_require = [
@@ -46,7 +41,7 @@ setup(
     version=v[0],
     description='Unifield loader',
     url='http://www.msf.org/',
-    download_url = 'https://github.com/Unifield/ufload/tarball/%s' % v[0],
+    download_url = 'https://github.com/Unifield/ufload3/tarball/%s' % v[0],
     author='MSF',
     license='MIT License',
     packages=find_packages(exclude=['tests.*', 'tests']),
@@ -57,13 +52,13 @@ setup(
     [console_scripts]
     ufload=ufload.cli.main:main
     """,
-    python_requires = ">=2.7",
+    python_requires = ">=3.10",
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',
         'Intended Audience :: Customer Service',
         'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.10',
     ],
 )
