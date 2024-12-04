@@ -604,7 +604,7 @@ def _cmdUpgrade(args):
                 except xmlrpc.client.Fault as err:
                     regex = r""".*Cannot check for updates: There is/are [0-9]+ revision\(s\) available."""
                     flags = re.S
-                    if re.compile(regex, flags).match(err[0]):
+                    if re.compile(regex, flags).match(err.faultString):
                         update_available = True
                         break
                     elif err[0].endswith('Authentification Failed, please contact the support'):
