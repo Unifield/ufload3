@@ -838,6 +838,8 @@ def parse():
                           help="set up a light local sync server and connects the restored instance(s) to it")
     pUpgrade.add_argument("-adminuser", default='admin', help="the admin username to log into the instances")
     pUpgrade.add_argument("-adminpw", default='admin', help="the admin password to log into the instances")
+    pUpgrade.add_argument("-connectionuser", default='sandbox_sync-user', help="User to connect instance to the sync server")
+    pUpgrade.add_argument("-connectionpw", default='Only4Sandbox', help="Password to connect instance to the sync server")
     pUpgrade.add_argument("-i", action="append", help="Instances to upgrade programmatically (matched as a substring, default = all). Other instances will be upgraded at login")
     pUpgrade.add_argument("-auto-sync", dest="autosync", action="store_true", help="Activate automatic synchronization")
     pUpgrade.add_argument("-silent-upgrade", dest="silentupgrade", action="store_true", help="Activate silent upgrade")

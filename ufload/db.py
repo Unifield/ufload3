@@ -369,7 +369,7 @@ def delive(args, db):
         pfx = ''
     rc = psql(args, 'alter table sync_client_sync_server_connection ADD COLUMN IF NOT EXISTS ufload_automatic_patching_prod_value boolean;', db)
     rc = psql(args, 'update sync_client_sync_server_connection set ufload_automatic_patching_prod_value=automatic_patching;', db)
-    rc = psql(args, 'update sync_client_sync_server_connection set automatic_patching = \'f\', protocol = \'xmlrpc\', login = \'%s\', database = \'%s%s\', host = \'127.0.0.1\', port = %d;' % (adminuser, pfx, ss, port), db)
+    rc = psql(args, 'update sync_client_sync_server_connection set automatic_patching = \'f\', protocol = \'xmlrpc\', login = \'%s\', database = \'%s\', host = \'127.0.0.1\', port = %d;' % (adminuser, ss, port), db)
     if rc != 0:
         return rc
 
@@ -705,7 +705,7 @@ def sync_server_all_admin(args, db='SYNC_SERVER_LOCAL'):
     _run_out(args, mkpsql(args, 'update sync_server_entity set user_id = 1;', db))
 
 def sync_server_all_sandbox_sync_user(args, db='SYNC_SERVER_LOCAL'):
-    _run_out(args, mkpsql(args, "update sync_server_entity set user_id = (select id from res_users where login='%s';" % args.connectionuser, db))
+    _run_out(args, mkpsql(args, "update sync_server_entity set user_id = (select id from res_users where login='%s');" % args.connectionuser, db))
     if args.connectionpw:
         _run_out(args, mkpsql(args, "update res_users set password ='%s' where login='%s';" % (args.connectionpw, args.connectionuser) , db))
 
@@ -730,7 +730,7 @@ def connect_instance_to_sync_server(args, sync_server, db):
 
         conn_ids = sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'search', [])
         sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'write', conn_ids, {'login' : args.connectionuser, 'password': args.connectionpw})
-        sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', conn_ids, 'connect')
+        sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'connect', conn_ids)
     except xmlrpc.client.Fault as e:
          ufload.progress("Error: unable to connect instance to the sync server: %s" % e)
     except:
@@ -764,19 +764,21 @@ def manual_upgrade(args, sync_server, db):
 class connect_rpc:
     def __init__(self, args, db):
         port = 8069
+        if args.sync_xmlrpcport:
+            port = args.sync_xmlrpcport
         sock = xmlrpc.client.ServerProxy('http://127.0.0.1:%s/xmlrpc/common' % (port, ))
         self.uid = sock.login(db, args.adminuser.lower(), args.adminpw)
-        if not uid:
+        if not self.uid:
             raise Exception('%s, Wrong %s password' % (db, args.adminuser.lower()))
         self.db = db
-        self.password = args.adminuser.lower()
+        self.password = args.adminpw
         self.sock = xmlrpc.client.ServerProxy('http://127.0.0.1:%s/xmlrpc/object' % (port, ))
 
     def get(self, model):
         return oerp_obj(self.sock, self.db, self.uid, self.password, model)
 
 class oerp_obj:
-    def __init__(sock, db, uid, password, model):
+    def __init__(self, sock, db, uid, password, model):
         self.sock = sock
         self.db = db
         self.uid = uid
@@ -786,7 +788,7 @@ class oerp_obj:
     def __getattr__(self, method):
         def rpc_method(*args, **kwargs):
             """Return the result of the RPC request."""
-            return self.sock.execute(self.db, self.uid, self.password, method, *args, **kwargs)
+            return self.sock.execute(self.db, self.uid, self.password, self.model, method, *args, **kwargs)
         return rpc_method
 
 
@@ -864,8 +866,7 @@ def _zipChecksum(path):
 def _zipContents(path):
     ufload.progress("Reading patch contents")
     with open(path, 'rb') as f:
-        contents = f.read()
-        return buffer(contents)
+        return f.read()
     #return contents
 
 
@@ -886,20 +887,15 @@ def installPatch(args, db='SYNC_SERVER_LOCAL'):
 
     rc, out = psql(args, "SELECT 1 FROM sync_server_version WHERE sum ='{}';".format(checksum), db, True)
     if not out.strip() and rc == 0:
-        contents = base64.b64encode(_zipContents(patch))
+        contents = str(base64.b64encode(_zipContents(patch)), 'utf8')
+        netrpc = connect_rpc(args, db)
+        version_obj = netrpc.get('sync_server.version.manager')
+        v_id = version_obj.create({'name': v, 'importance': 'required', 'comment': v, 'patch': contents})
+        version_obj.add_revision([v_id])
 
-        sql = "INSERT INTO sync_server_version (create_uid, create_date, write_date, write_uid, date, state, importance, name, comment, sum, patch) VALUES (1, NOW(), NOW(), 1, NOW(),  'confirmed', 'required', '%s', 'Version %s installed by ufload', '%s', '%s')" % (v, v, checksum, contents)
-        # ufload.progress(sql)
-        # Write sql to a file
-        f = open('sql.sql', 'w')
-        f.write(sql)
-        f.close()
-
-        rc = psql_file(args, 'sql.sql', db)
-        os.remove('sql.sql');
-
-        if rc != 0:
-            return rc
+        version_line = netrpc.get('sync_server.version')
+        line_ids = version_line.search([('sum', '=', checksum)])
+        version_line.activate_revision(line_ids)
         return 0
     else:
         ufload.progress("The v.%s patch on %s database is already installed!!" % (v, db))
