@@ -8,7 +8,7 @@ import time
 import re
 import socket
 
-import ufload
+import ufload3
 
 def _home():
     if sys.platform == "win32" and 'USERPROFILE' in os.environ:
@@ -37,7 +37,7 @@ def _progress(p):
             #file.write('\n'.join(_logs))
             file.write('%s\n' % p)
 
-ufload.progress = _progress
+ufload3.progress = _progress
 
 def _ocToDir(oc):
     x = oc.lower()
@@ -59,7 +59,7 @@ def _required(args, req):
     for r in req:
         if getattr(args, r) is None:
             r = r.replace("_", "-")
-            ufload.progress('Argument --%s is required for this sub-command.' % r)
+            ufload3.progress('Argument --%s is required for this sub-command.' % r)
             err += 1
     return err == 0
 
@@ -86,7 +86,7 @@ def _file_to_db(args, fn):
 def _cmdArchive(args):
     if not _required(args, [ 'from_dsn' ]):
         return 2
-    return ufload.db.archive(args)
+    return ufload3.db.archive(args)
 
 def _cmdRestore(args):
     # if args.sync:
@@ -94,19 +94,19 @@ def _cmdRestore(args):
     #         return 2
 
     if args.logo and not os.path.isfile(args.logo):
-        ufload.progress("Logo path %s not found" % args.logo)
+        ufload3.progress("Logo path %s not found" % args.logo)
         return 2
 
     if args.autosync is not None:
         if not _required(args, [ 'sync' ]):
             if not _required(args, [ 'synclight' ]):
-                ufload.progress("Load sync server (-load-sync-server or -load-sync-server-no-update) argument is mandatory for auto-sync")
+                ufload3.progress("Load sync server (-load-sync-server or -load-sync-server-no-update) argument is mandatory for auto-sync")
                 return 2
 
     # if the parameter nopwreset is not defined, adminpw and userspw are mandatory.
     if not args.nopwreset:
         if args.adminpw is None or args.userspw is None:
-            ufload.progress("-adminpw AND -userspw are mandatory if -nopwreset is not set")
+            ufload3.progress("-adminpw AND -userspw are mandatory if -nopwreset is not set")
             return 2
 
     if args.file is not None:
@@ -130,10 +130,10 @@ def _cmdRestore(args):
     if args.sync or args.synclight or args.autosync or args.ss is not None:
         # Update instances sync settings
         for db in dbs:
-            ufload._progress("Connection settings for %s" % db)
+            ufload3._progress("Connection settings for %s" % db)
             if args.sync or args.autosync or args.synclight or args.ss is not None:
                 #Connects each instance to the sync server (and sets pwd)
-                ufload.db.connect_instance_to_sync_server(args, ss, db)
+                ufload3.db.connect_instance_to_sync_server(args, ss, db)
 
         _syncLink(args, dbs, ss)
 
@@ -143,26 +143,26 @@ def _fileRestore(args):
     # Find the instance name we are loading into
     if args.i is not None:
         if len(args.i) != 1:
-            ufload.progress("Expected only one -i argument.")
+            ufload3.progress("Expected only one -i argument.")
             return 3, None
         db = args.i[0]
     else:
         db = _file_to_db(args, args.file)
         if db is None:
-            ufload.progress("Could not set the instance from the filename. Use -i to specify it.")
+            ufload3.progress("Could not set the instance from the filename. Use -i to specify it.")
             return 3, None
 
     try:
         statinfo = os.stat(args.file)
     except OSError as e:
-        ufload.progress("Could not find file size: "+str(e))
+        ufload3.progress("Could not find file size: "+str(e))
         return 1, None
 
     with open(args.file, 'rb') as f:
-        rc = ufload.db.load_dump_into(args, db, f, statinfo.st_size)
+        rc = ufload3.db.load_dump_into(args, db, f, statinfo.st_size)
 
     if not args.noclean:
-        rc = ufload.db.clean(args, db)
+        rc = ufload3.db.clean(args, db)
 
     if args.notify:
         subprocess.call([ args.notify, db ])
@@ -181,7 +181,7 @@ def _dirRestore(args):
         db = _file_to_db(args, file)
         fullfile = '%s/%s' % (args.dir, file)
         if db is None:
-            ufload.progress("Could not set the instance from the file %s." % file)
+            ufload3.progress("Could not set the instance from the file %s." % file)
         else:
             dbs.append(db)
             atleastone = True
@@ -190,15 +190,15 @@ def _dirRestore(args):
             statinfo = os.stat(fullfile)
             sz = statinfo.st_size
         except OSError as e:
-            ufload.progress("Could not find file size: " + str(e))
+            ufload3.progress("Could not find file size: " + str(e))
             sz = 0
             return 1, None
 
         with open(fullfile, 'rb') as f:
-            ufload.db.load_dump_into(args, db, f, sz)
+            ufload3.db.load_dump_into(args, db, f, sz)
 
         if not args.noclean:
-            ufload.db.clean(args, db)
+            ufload3.db.clean(args, db)
 
         if args.notify:
             subprocess.call([args.notify, db])
@@ -210,18 +210,18 @@ def _dirRestore(args):
 
 def _multiRestore(args):
     if not _required(args, [ 'user', 'pw' ]):
-        ufload.progress('With no -file or -dir argument, cloud credentials are mandatory.')
+        ufload3.progress('With no -file or -dir argument, cloud credentials are mandatory.')
         return 2, None
 
     if args.i is None:
         if not _required(args, [ 'oc' ]):
-            ufload.progress('With no -file or -dir argument, you must use -i or -oc.')
+            ufload3.progress('With no -file or -dir argument, you must use -i or -oc.')
             return 2, None
-        ufload.progress("Multiple Instance restore for all instances in %s" % args.oc)
+        ufload3.progress("Multiple Instance restore for all instances in %s" % args.oc)
     else:
         if not args.oc:
-            ufload.progress('Argument -oc not provided, please note that ufload will look for a OC pattern in the -i arguments (you might want to avoid partial substrings)')
-        ufload.progress("Multiple Instance restore for instances matching: %s" % " or ".join(args.i))
+            ufload3.progress('Argument -oc not provided, please note that ufload will look for a OC pattern in the -i arguments (you might want to avoid partial substrings)')
+        ufload3.progress("Multiple Instance restore for instances matching: %s" % " or ".join(args.i))
 
     if args.workingdir:
         try:
@@ -239,9 +239,9 @@ def _multiRestore(args):
     os.chdir('ufload_temp')
 
     #Cloud access
-    info = ufload.cloud.get_cloud_info(args)
-    ufload.progress('site=%s - path=%s - dir=%s' % (info.get('site'), info.get('path'), info.get('dir')))
-    dav = ufload.cloud.get_onedrive_connection(args)
+    info = ufload3.cloud.get_cloud_info(args)
+    ufload3.progress('site=%s - path=%s - dir=%s' % (info.get('site'), info.get('path'), info.get('dir')))
+    dav = ufload3.cloud.get_onedrive_connection(args)
 
     if not args.oc:
         #foreach -i add the dir
@@ -249,14 +249,14 @@ def _multiRestore(args):
         instances = {}
         baseurl = dav.baseurl.rstrip('/')
         for substr in args.i:
-            if args.exclude is None or not ufload.cloud._match_instance_name(args.exclude, substr):
-                dirs.append(ufload.cloud.instance_to_dir(substr))
+            if args.exclude is None or not ufload3.cloud._match_instance_name(args.exclude, substr):
+                dirs.append(ufload3.cloud.instance_to_dir(substr))
         #Remove duplicates
         dirs = list(set(dirs))
         #Get the list for every required OC
         for dir in dirs:
             dav.change_oc(baseurl, dir)
-            instances.update(ufload.cloud.list_files(user=info.get('login'),
+            instances.update(ufload3.cloud.list_files(user=info.get('login'),
                                                      pw=info.get('password'),
                                                      where=dir + args.cloud_path,
                                                      instances=args.i,
@@ -265,7 +265,7 @@ def _multiRestore(args):
                                                      site=dir,
                                                      path=info.get('path')))
     else:
-        instances = ufload.cloud.list_files(user=info.get('login'),
+        instances = ufload3.cloud.list_files(user=info.get('login'),
                                             pw=info.get('password'),
                                             where=info.get('dir'),
                                             instances=args.i,
@@ -277,12 +277,12 @@ def _multiRestore(args):
     if args.exclude is not None:
         to_remove = []
         for i in instances:
-            if ufload.cloud._match_instance_name(args.exclude, i):
+            if ufload3.cloud._match_instance_name(args.exclude, i):
                 to_remove.append(i)
         for to_r in  to_remove:
             del(instances[to_r])
 
-    ufload.progress("Instances to be restored: %s" % ", ".join(list(instances.keys())))
+    ufload3.progress("Instances to be restored: %s" % ", ".join(list(instances.keys())))
     dbs=[]
     pattern = re.compile('.*-[A-Z]{1}[a-z]{2}\.zip$')
 
@@ -295,7 +295,7 @@ def _multiRestore(args):
             if not pattern.match(j[1]):
                 continue
 
-            ufload.progress("Trying file %s" % j[1])
+            ufload3.progress("Trying file %s" % j[1])
             #If -oc is not known, change the connection settings according to the current instance
             if not args.oc:
                 if i.endswith('_OCA'):
@@ -310,51 +310,51 @@ def _multiRestore(args):
             try:
                 filename = dav.download(j[0],j[1])
             except Exception as e:
-                ufload.progress("Error upload %s" % e)
+                ufload3.progress("Error upload %s" % e)
                 continue
 
             filesize = os.path.getsize(filename) / (1024 * 1024)
-            ufload.progress("File size: %s Mb" % filesize)
+            ufload3.progress("File size: %s Mb" % filesize)
 
-            n= ufload.cloud.peek_inside_local_file(j[0], filename)
+            n= ufload3.cloud.peek_inside_local_file(j[0], filename)
             if n is None:
                 os.unlink(j[1])
                 # no dump inside of zip, try the next one
                 continue
 
             db = _file_to_db(args, str(n))
-            if ufload.db.exists(args, db):
-                ufload.progress("Database %s already exists." % db)
+            if ufload3.db.exists(args, db):
+                ufload3.progress("Database %s already exists." % db)
                 os.unlink(j[1])
                 break
             else:
-                ufload.progress("Database %s does not exist, restoring." % db)
+                ufload3.progress("Database %s does not exist, restoring." % db)
 
-            '''f, sz = ufload.cloud.openDumpInZip(j[0], j[1],
+            '''f, sz = ufload3.cloud.openDumpInZip(j[0], j[1],
                                            user=args.user,
                                            pw=args.pw,
                                            where=_ocToDir(args.oc))
             '''
-            fname, sz = ufload.cloud.openDumpInZip(j[1])
+            fname, sz = ufload3.cloud.openDumpInZip(j[1])
             if fname is None:
                 os.unlink(j[1])
                 continue
 
             db = _file_to_db(args, fname)
             if db is None:
-                ufload.progress("Bad filename %s. Skipping." % fname)
+                ufload3.progress("Bad filename %s. Skipping." % fname)
                 try:
                     os.unlink(j[1])
                 except:
                     pass
                 continue
 
-            rc = ufload.db.load_zip_into(args, db, j[1], sz)
+            rc = ufload3.db.load_zip_into(args, db, j[1], sz)
             if rc == 0:
                 dbs.append(db)
 
                 if not args.noclean:
-                    rc = ufload.db.clean(args, db)
+                    rc = ufload3.db.clean(args, db)
 
                 if args.notify:
                     subprocess.call([ args.notify, db ])
@@ -402,52 +402,52 @@ def _syncRestore(args, dbs, ss):
         r = requests.head(url,
                           auth=requests.auth.HTTPBasicAuth(args.syncuser, args.syncpw))
         if r.status_code != 200:
-            ufload.progress("HTTP HEAD error: %s" % r.status_code)
+            ufload3.progress("HTTP HEAD error: %s" % r.status_code)
             return 1
     except KeyboardInterrupt as e:
         raise e
     except Exception as  e:
-        ufload.progress("Failed to fetch sync server: " + str(e))
+        ufload3.progress("Failed to fetch sync server: " + str(e))
         return 1
 
     sz = int(r.headers.get('content-length', 0))
-    szdb = ufload.db.get_sync_server_len(args, sdb)
+    szdb = ufload3.db.get_sync_server_len(args, sdb)
 
     if szdb == sz:
-        ufload.progress("Sync server is up to date.")
+        ufload3.progress("Sync server is up to date.")
         return 0
 
     r = requests.get(url,
                      auth=requests.auth.HTTPBasicAuth(args.syncuser, args.syncpw),
                      stream=True)
     if r.status_code != 200:
-        ufload.progress("HTTP GET error: %s" % r.status_code)
+        ufload3.progress("HTTP GET error: %s" % r.status_code)
         return 1
 
-    rc = ufload.db.load_dump_into(args, sdb, r.raw, sz)
+    rc = ufload3.db.load_dump_into(args, sdb, r.raw, sz)
     if rc != 0:
         return rc
-    ufload.db.write_sync_server_len(args, sz, sdb)
+    ufload3.db.write_sync_server_len(args, sz, sdb)
 
     if not args.noclean:
-        rc = ufload.db.clean(args, sdb)
+        rc = ufload3.db.clean(args, sdb)
 
     return _syncLink(args, dbs, sdb)
 
 # separate function to make testing easier
 def _syncLink(args, dbs, sdb):
-    ufload.progress("Updating hardware id...")
+    ufload3.progress("Updating hardware id...")
     # Arrange that all instances use admin as the sync user
-    #ufload.db.sync_server_all_admin(args, sdb)
-    ufload.db.sync_server_all_sandbox_sync_user(args, sdb)
+    #ufload3.db.sync_server_all_admin(args, sdb)
+    ufload3.db.sync_server_all_sandbox_sync_user(args, sdb)
 
     # manage gap in sync update sequence
-    ufload.db.psql(args, "update ir_sequence set number_next=number_next+1000 where code='sync.server.update';", sdb)
+    ufload3.db.psql(args, "update ir_sequence set number_next=number_next+1000 where code='sync.server.update';", sdb)
 
     # Hook up all the databases we are currently working on
-    hwid = ufload.db.get_hwid(args)
+    hwid = ufload3.db.get_hwid(args)
     if hwid is None:
-        ufload.progress("No hardware id available, you will need to manually link your instances to %s." % sdb)
+        ufload3.progress("No hardware id available, you will need to manually link your instances to %s." % sdb)
         return 0
 
     if args.ss and (args.sync is None and args.synclight is None):
@@ -456,11 +456,11 @@ def _syncLink(args, dbs, sdb):
     else:
         # We update hardware id for all local instances: it's a new sync server, so no instance is connected yet
         all = True
-        ufload.db.psql(args, 'update sync_server_entity set hardware_id = \'%s\';' % hwid, sdb)
+        ufload3.db.psql(args, 'update sync_server_entity set hardware_id = \'%s\';' % hwid, sdb)
 
     for db in dbs:
-        ufload.progress("Updating hardware id and entity name for %s in sync server" % db)
-        rc = ufload.db.sync_link(args, hwid, db, sdb, all)   #Update hardware_id and entity name (of the instance) in sync server db
+        ufload3.progress("Updating hardware id and entity name for %s in sync server" % db)
+        rc = ufload3.db.sync_link(args, hwid, db, sdb, all)   #Update hardware_id and entity name (of the instance) in sync server db
         if rc != 0:
             return rc
     return 0
@@ -473,9 +473,9 @@ def _cmdLs(args):
         args.subdir = ''
 
     # Cloud access
-    info = ufload.cloud.get_cloud_info(args, args.subdir)
-    dav = ufload.cloud.get_onedrive_connection(args)
-    instances = ufload.cloud.list_files(user=info.get('login'),
+    info = ufload3.cloud.get_cloud_info(args, args.subdir)
+    dav = ufload3.cloud.get_onedrive_connection(args)
+    instances = ufload3.cloud.list_files(user=info.get('login'),
                                         pw=info.get('password'),
                                         where=info.get('dir'),
                                         instances=args.i,
@@ -485,7 +485,7 @@ def _cmdLs(args):
                                         path=info.get('path'))
 
     if len(instances) == 0:
-        ufload.progress("No files found.")
+        ufload3.progress("No files found.")
         return 1
 
     for i in instances:
@@ -497,13 +497,13 @@ def _cmdLs(args):
     return 0
 
 def _cmdClean(args):
-    nb = ufload.db.cleanDbs(args)
+    nb = ufload3.db.cleanDbs(args)
     if nb==1:
-        ufload._progress('One database has been deleted')
+        ufload3._progress('One database has been deleted')
     elif nb>1:
-        ufload._progress('%s databases have been deleted' % nb)
+        ufload3._progress('%s databases have been deleted' % nb)
     else:
-        ufload._progress('No database to delete found')
+        ufload3._progress('No database to delete found')
 
     return 0
 
@@ -523,11 +523,11 @@ def _cmdUpgrade(args):
         if not _required(args, [ 'adminuser', 'adminpw' ]):
             return 2
         #Connect to OD (cloud access)
-        info = ufload.cloud.get_cloud_info(args, args.patchcloud)
-        ufload.progress('site=%s - path=%s - dir=%s' % (info.get('site'), info.get('path'), info.get('dir')))
-        dav = ufload.cloud.get_onedrive_connection(args)
+        info = ufload3.cloud.get_cloud_info(args, args.patchcloud)
+        ufload3.progress('site=%s - path=%s - dir=%s' % (info.get('site'), info.get('path'), info.get('dir')))
+        dav = ufload3.cloud.get_onedrive_connection(args)
         #Check for a zip file in the folder
-        patches = ufload.cloud.list_patches(user=info.get('login'),
+        patches = ufload3.cloud.list_patches(user=info.get('login'),
                                             pw=info.get('password'),
                                             where=info.get('dir'),
                                             dav=dav,
@@ -535,7 +535,7 @@ def _cmdUpgrade(args):
                                             site=info.get('site'),
                                             path=info.get('path'))
         if len(patches) == 0:
-            ufload.progress("No upgrade patch found.")
+            ufload3.progress("No upgrade patch found.")
             return 1
 
         #Download the patch
@@ -550,14 +550,14 @@ def _cmdUpgrade(args):
             if m:
                 args.version = m.group(1)
 
-            if ufload.db.installPatch(args, ss) == 0:
+            if ufload3.db.installPatch(args, ss) == 0:
                 i += 1
             else:
                 summarize['initial_version'] = args.version
             summarize['last_version'] = args.version
             os.remove(filename)
         if i == 0:
-            ufload.progress("No new patches found")
+            ufload3.progress("No new patches found")
             if args.userrightscloud is None or not args.forcesync:
                 return 0
     else:
@@ -565,8 +565,8 @@ def _cmdUpgrade(args):
         if not _required(args, [ 'patch', 'version', 'adminuser', 'adminpw' ]):
             return 2
 
-        if ufload.db.installPatch(args, ss) == -1:
-            ufload.progress("No new patches found")
+        if ufload3.db.installPatch(args, ss) == -1:
+            ufload3.progress("No new patches found")
             if args.userrightscloud is None or not args.forcesync:
                 return 0
 
@@ -574,7 +574,7 @@ def _cmdUpgrade(args):
     if args.i is not None:
         instances = [x for x in args.i]
     else:
-        instances = ufload.db._allDbs(args)
+        instances = ufload3.db._allDbs(args)
 
     #Update hardware_id and entity names in the Sync Server
     _syncLink(args, instances, ss)
@@ -586,12 +586,12 @@ def _cmdUpgrade(args):
     #Upgrade Unifield
     for instance in instances:
         if instance and instance != ss:
-            ufload._progress("Connecting instance %s to sync server %s" % (instance, ss))
+            ufload3._progress("Connecting instance %s to sync server %s" % (instance, ss))
             try:
-                ufload.db.connect_instance_to_sync_server(args, ss, instance)
+                ufload3.db.connect_instance_to_sync_server(args, ss, instance)
             except xmlrpc.client.Fault as err:
                 if err[0].endswith("OpenERP version doesn't match database version!"):
-                    ufload.progress("new versions is present")
+                    ufload3.progress("new versions is present")
                     update_available = True
                 else:
                     raise xmlrpc.client.Fault(err)
@@ -600,7 +600,7 @@ def _cmdUpgrade(args):
             i = 0
             while update_src:
                 try:
-                    ufload.db.manual_sync(args, ss, instance)
+                    ufload3.db.manual_sync(args, ss, instance)
                 except xmlrpc.client.Fault as err:
                     regex = r""".*Cannot check for updates: There is/are [0-9]+ revision\(s\) available."""
                     flags = re.S
@@ -617,13 +617,13 @@ def _cmdUpgrade(args):
                 update_src = False
                 break
             if not update_src:
-                ufload.progress("No valid Update valid.")
+                ufload3.progress("No valid Update valid.")
                 break
 
             if update_available:
-                ufload.progress("Upgrading Unifield App")
-                ufload.db.manual_upgrade(args, ss, instance)
-                ufload.progress("Awaiting the restart of Unifield")
+                ufload3.progress("Upgrading Unifield App")
+                ufload3.db.manual_upgrade(args, ss, instance)
+                ufload3.progress("Awaiting the restart of Unifield")
                 starting_up = True
                 i = 0
                 sleep_time = 1
@@ -658,13 +658,13 @@ def _cmdUpgrade(args):
             sleep_time = 5
             max_time = 1800
             max_incrementation = (max_time/sleep_time)
-            ufload.progress("Updating modules for instance {}".format(instance))
+            ufload3.progress("Updating modules for instance {}".format(instance))
             while update_modules and i < max_incrementation:
                 update_modules = False
                 try:
-                    ufload.db.connect_rpc(args, ss, instance)
+                    ufload3.db.connect_rpc(args, ss, instance)
                 except xmlrpc.client.Fault as err:
-                    ufload._progress("error.RPCError: {0}".format(err[0]))
+                    ufload3._progress("error.RPCError: {0}".format(err[0]))
                     # regex = r""".*Cannot check for updates: There is/are [0-9]+ revision\(s\) available."""
                     # flags = re.S
                     # if re.compile(regex, flags).match(err[0]) or err[0].endswith('Server is updating modules ...'):
@@ -674,7 +674,7 @@ def _cmdUpgrade(args):
                         update_modules = True
                     else:
                         raise xmlrpc.client.Fault(err)
-                except socket.error as err:
+                except socket.error:
                     update_modules = True
                 for j in range(sleep_time):
                     sys.stdout.write(next(spinner))
@@ -684,16 +684,16 @@ def _cmdUpgrade(args):
                 i +=1
             sys.stdout.write('\r')
             if i >= max_incrementation and not update_modules:
-                raise ValueError("tolong wait for updating module instance %s".format(instance))
+                raise ValueError("tolong wait for updating module instance %s" % instance)
 
     if args.userrightscloud is not None:
 
         #Connect to OD (cloud access)
-        info = ufload.cloud.get_cloud_info(args, args.userrightscloud)
-        ufload.progress('site=%s - path=%s - dir=%s' % (info.get('site'), info.get('path'), info.get('dir')))
-        dav = ufload.cloud.get_onedrive_connection(args)
+        info = ufload3.cloud.get_cloud_info(args, args.userrightscloud)
+        ufload3.progress('site=%s - path=%s - dir=%s' % (info.get('site'), info.get('path'), info.get('dir')))
+        dav = ufload3.cloud.get_onedrive_connection(args)
         #Check for a zip file in the folder
-        patches = ufload.cloud.list_patches(user=info.get('login'),
+        patches = ufload3.cloud.list_patches(user=info.get('login'),
                                             pw=info.get('password'),
                                             where=info.get('dir'),
                                             dav=dav,
@@ -701,7 +701,7 @@ def _cmdUpgrade(args):
                                             site=info.get('site'),
                                             path=info.get('path'))
         if len(patches) == 0:
-            ufload.progress("No User Rights found.")
+            ufload3.progress("No User Rights found.")
             return 1
         patches.sort(key=lambda s: list(map(int, re.split('\.|-|p',re.search('User Rights v(.+?).zip',  s[1], re.I).group(1)))))
 
@@ -713,10 +713,10 @@ def _cmdUpgrade(args):
             args.user_rights_zip= urfilename
             summarize['user_rights_updated'] = re.search('User Rights v(.+?).zip',  urfilename, re.I).group(1)
             try:
-                ufload.db.installUserRights(args, ss)
+                ufload3.db.installUserRights(args, ss)
             except xmlrpc.client.Fault as err:
                 if err[0].endswith('exists on server'):
-                    ufload.progress(err[0].split("\n")[-1])
+                    ufload3.progress(err[0].split("\n")[-1])
                     summarize['user_rights_updated'] = ''
                 else:
                     raise xmlrpc.client.Fault(err)
@@ -726,30 +726,30 @@ def _cmdUpgrade(args):
     if args.forcesync and ( not args.userrightscloud or ( args.userrightscloud and summarize['user_rights_updated'] != '' )):
         if instance and instance != ss:
             for instance in instances:
-                ufload._progress("Connecting instance %s to sync server %s" % (instance, ss))
-                ufload.db.connect_instance_to_sync_server(args, ss, instance)
-                ufload._progress("synchonisation instance %s with sync server %s" % (instance, ss))
-                ufload.db.manual_sync(args, ss, instance)
+                ufload3._progress("Connecting instance %s to sync server %s" % (instance, ss))
+                ufload3.db.connect_instance_to_sync_server(args, ss, instance)
+                ufload3._progress("synchonisation instance %s with sync server %s" % (instance, ss))
+                ufload3.db.manual_sync(args, ss, instance)
 
     if (args.autosync or  args.silentupgrade) and update_src:
         for instance in instances:
             if instance:
-                ufload._progress("Connecting instance %s to sync server %s" % (instance, ss))
-                ufload.db.connect_instance_to_sync_server(args, ss, instance)
-                #ufload._progress("Update instance %s" % instance)
-                #ufload.db.updateInstance(instance)
+                ufload3._progress("Connecting instance %s to sync server %s" % (instance, ss))
+                ufload3.db.connect_instance_to_sync_server(args, ss, instance)
+                #ufload3._progress("Update instance %s" % instance)
+                #ufload3.db.updateInstance(instance)
                 if args.autosync:
                     #activate auto-sync (now + 1 hour)
-                    ufload.db.activate_autosync(args, instance, ss)
+                    ufload3.db.activate_autosync(args, instance, ss)
                 if args.silentupgrade:
                     #activate silent upgrade
-                    ufload.db.activate_silentupgrade(args, instance)
+                    ufload3.db.activate_silentupgrade(args, instance)
 
-    ufload.progress(" *** summarize ***" )
-    ufload.progress(" * Initial version installed: {}".format(summarize['initial_version']) )
-    ufload.progress(" * Last version installed: {}".format(summarize['last_version']) )
+    ufload3.progress(" *** summarize ***" )
+    ufload3.progress(" * Initial version installed: {}".format(summarize['initial_version']) )
+    ufload3.progress(" * Last version installed: {}".format(summarize['last_version']) )
     if args.userrightscloud is not None:
-        ufload.progress(" * User Rights updated : {}".format(summarize['user_rights_updated'] if summarize['user_rights_updated'] else 'None' ) )
+        ufload3.progress(" * User Rights updated : {}".format(summarize['user_rights_updated'] if summarize['user_rights_updated'] else 'None' ) )
 
     return 0
 
@@ -762,7 +762,7 @@ spinner = spinning_cursor()
 
 
 def parse():
-    parser = argparse.ArgumentParser(prog='ufload')
+    parser = argparse.ArgumentParser(prog='ufload3')
 
     parser.add_argument("-user", help="Cloud username")
     parser.add_argument("-pw", help="Cloud password")
@@ -856,7 +856,7 @@ def parse():
     # read from $HOME/.ufload first
     conffile = configparser.ConfigParser()
     if sys.platform == "win32":
-        conffile.read('%s/ufload.txt' % _home())
+        conffile.read('%s/ufload3.txt' % _home())
     else:
         conffile.read('%s/.ufload' % _home())
 
@@ -883,13 +883,13 @@ def main():
         except KeyboardInterrupt:
             rc = 1
 
-    ufload.progress("ufload is done working :-)")
+    ufload3.progress("ufload is done working :-)")
 
     if args.remote:
         import socket
         hostname = socket.gethostname() or 'unknown'
-        ufload.progress("Will exit with result code: %d" % rc)
-        ufload.progress("Posting logs to remote server.")
+        ufload3.progress("Will exit with result code: %d" % rc)
+        ufload3.progress("Posting logs to remote server.")
         requests.post(args.remote+"?who=%s"%hostname, data='\n'.join(_logs))
 
     sys.exit(rc)

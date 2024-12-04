@@ -10,7 +10,7 @@ from . import webdav
 from urllib.parse import urlparse
 
 
-import ufload
+import ufload3
 
 def _splitCloudName(x):
     spl = x.split(":", 1)
@@ -27,7 +27,7 @@ def _decrypt(pwd):
         x = str(base64.b64decode(x), 'utf8')
         return x
     except:
-        ufload.progress('Unable to decode password')
+        ufload3.progress('Unable to decode password')
         print(sys.exc_info()[0])
 
 
@@ -83,15 +83,15 @@ def get_cloud_info(args, sub_dir=''):
 def get_onedrive_connection(args):
     info = get_cloud_info(args)
     if not info.get('url'):
-        ufload.progress('URL is not set!')
+        ufload3.progress('URL is not set!')
     if not info.get('login'):
-        ufload.progress('login is not set!')
+        ufload3.progress('login is not set!')
     if not info.get('password'):
-        ufload.progress('Password is not set!')
+        ufload3.progress('Password is not set!')
 
     url = urlparse(info['url'])
     if not url.netloc:
-        ufload.progress('Unable to parse url: %s') % (info['url'])
+        ufload3.progress('Unable to parse url: %s') % (info['url'])
 
     path = info.get('site') + url.path
 
@@ -100,20 +100,20 @@ def get_onedrive_connection(args):
                             password=info['password'], path=path)
         return dav
     except webdav.ConnectionFailed as e:
-        ufload.progress('Unable to connect: {}'.format(e))
-        ufload.progress('Cannot proceed without connection, exiting program.')
+        ufload3.progress('Unable to connect: {}'.format(e))
+        ufload3.progress('Cannot proceed without connection, exiting program.')
         exit(1)
 
 
 
 
 def _get_all_files_and_timestamp(dav, d):
-    ufload.progress('Browsing files from dir %s' % d)
+    ufload3.progress('Browsing files from dir %s' % d)
     try:
         #all_zip = dav.ls(d)
         all_zip = dav.list(d)
     except Exception as e:
-        ufload.progress("Cloud Exception 88")
+        ufload3.progress("Cloud Exception 88")
         logging.warn(str(e))
         return []
 
@@ -132,7 +132,7 @@ def _get_all_files_and_timestamp(dav, d):
         if abs(time.time() - time.mktime(t)) < 900:
             continue
 
-        # ufload.progress('File found: %s' % f['Name'])
+        # ufload3.progress('File found: %s' % f['Name'])
 
         if f['Name'].split(".")[-1] != "zip":
             logging.warn("Ignoring non-zipfile: %s" % f['Name'])
@@ -171,7 +171,7 @@ def _group_files_to_download(files):
         #isplit = f.rindex('/')
         #filename = f[isplit+1:]
         if '-' not in f:
-            ufload.progress("filename is missing expected dash: "+ f)
+            ufload3.progress("filename is missing expected dash: "+ f)
             continue
 
         instance = '-'.join(f.split('-')[:-1])
@@ -216,15 +216,15 @@ def peek_inside_local_file(path, fn):
     try:
         z = zipfile.ZipFile(fn)
     except Exception as e:
-        ufload.progress("Zipfile %s: could not read: %s" % (fn, e))
+        ufload3.progress("Zipfile %s: could not read: %s" % (fn, e))
         return None
 
     names = z.namelist()
     if len(names) == 0:
-        ufload.progress("Zipfile %s has no files in it." % fn)
+        ufload3.progress("Zipfile %s has no files in it." % fn)
         return None
     if len(names) != 1:
-        ufload.progress("Zipfile %s has unexpected files in it: %s" % (fn, names))
+        ufload3.progress("Zipfile %s has unexpected files in it: %s" % (fn, names))
         return None
     n = names[0]
     z.close()
@@ -233,7 +233,7 @@ def peek_inside_local_file(path, fn):
 
 
 def dlProgress(pct):
-    ufload.progress("Downloaded %d%%" % pct)
+    ufload3.progress("Downloaded %d%%" % pct)
 
 # Returns a file-like-object
 #def openDumpInZip(path, fn, **kwargs):

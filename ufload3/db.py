@@ -1,17 +1,18 @@
 import os, sys, subprocess, tempfile, hashlib, urllib.request, urllib.parse, urllib.error, zipfile, base64
 import xmlrpc.client
-import ufload
+import ufload3
 import re
 
 def _run_out(args, cmd):
     try:
-        return subprocess.check_output(cmd, env=pg_pass(args), stderr=subprocess.STDOUT).split('\n')
-    except Exception:
+        return str(subprocess.check_output(cmd, env=pg_pass(args), stderr=subprocess.STDOUT), 'utf8').split('\n')
+    except Exception as e:
+        ufload3.progress("Unexpected error %s" % e)
         return []
 
 def _run(args, cmd, get_out=False, silent=False):
     if args.show:
-        ufload.progress("Would run: " + str(cmd))
+        ufload3.progress("Would run: " + str(cmd))
         rc = 0
     else:
         if silent or get_out:
@@ -96,11 +97,11 @@ def psql_file(args, file, db='postgres', silent=False):
     
 def load_zip_into(args, db, f, sz):
     if sz == 0:
-        ufload.progress("Note: No progress percent available.")
+        ufload3.progress("Note: No progress percent available.")
     
     db2 = db + "_" + str(os.getpid())
 
-    ufload.progress("Create database "+db2)
+    ufload3.progress("Create database "+db2)
     tablespace = ""
     if args.db_tablespace:
         tablespace = 'TABLESPACE "%s"'%args.db_tablespace
@@ -111,7 +112,7 @@ def load_zip_into(args, db, f, sz):
     # From here out, we need a try block, so that we can drop
     # the temp db if anything went wrong
     try:
-        ufload.progress("Restoring into %s" % db2)
+        ufload3.progress("Restoring into %s" % db2)
     
         cmd = pg_restore(args)
         cmd.append('--no-acl')
@@ -137,7 +138,7 @@ def load_zip_into(args, db, f, sz):
 
             cmd.append(fn)
 
-            ufload.progress("Starting restore. This will take some time.")
+            ufload3.progress("Starting restore. This will take some time.")
             try:
                 rc =_run(args, cmd)
             except KeyboardInterrupt:
@@ -150,13 +151,13 @@ def load_zip_into(args, db, f, sz):
                 pass
 
         else:
-            ufload.progress("Would run: "+ str(cmd))
+            ufload3.progress("Would run: "+ str(cmd))
             rc = 0
 
         rcstr = "ok"
         if rc != 0:
             rcstr = "error %d" % rc
-        ufload.progress("Restore finished with result code: %s" % rcstr)
+        ufload3.progress("Restore finished with result code: %s" % rcstr)
         _checkrc(rc)
 
         # Let's delete uninstalled versions
@@ -170,20 +171,20 @@ def load_zip_into(args, db, f, sz):
 
         # Analyze DB to optimize queries (rebuild indexes...)
         if args.analyze:
-            ufload.progress("Analyzing database %s and rebuilding indexes" % db2)
+            ufload3.progress("Analyzing database %s and rebuilding indexes" % db2)
             rc = psql(args, 'ANALYZE', db2)
             _checkrc(rc)
 
         _checkrc(delive(args, db2))
         
-        ufload.progress("Drop database "+db)
+        ufload3.progress("Drop database "+db)
         killCons(args, db)
         rc = psql(args, 'DROP DATABASE IF EXISTS \"%s\"'%db)
         # First, revoke CONNECT rights to the DB so there won't be any auto-connect issues
         psql(args, 'GRANT CONNECT ON DATABASE %s FROM public' % db, 'postgres', True)
         _checkrc(rc)
 
-        ufload.progress("Rename database %s to %s" % (db2, db))
+        ufload3.progress("Rename database %s to %s" % (db2, db))
         rc = psql(args, 'ALTER DATABASE \"%s\" RENAME TO \"%s\"' % (db2, db))
         _checkrc(rc)
 
@@ -192,7 +193,7 @@ def load_zip_into(args, db, f, sz):
 
         for d in _allDbs(args):
             if d.startswith(db) and d!=db:
-                ufload.progress("Cleaning other database for instance %s: %s" % (db, d))
+                ufload3.progress("Cleaning other database for instance %s: %s" % (db, d))
                 killCons(args, d)
                 rc = psql(args, 'DROP DATABASE IF EXISTS \"%s\"' % d)
                 if rc != 0:
@@ -200,9 +201,9 @@ def load_zip_into(args, db, f, sz):
 
         return 0
     except Exception:
-        ufload.progress("Unexpected error %s" % sys.exc_info()[0])
+        ufload3.progress("Unexpected error %s" % sys.exc_info()[0])
         # something went wrong, so drop the temp table
-        ufload.progress("Cleanup: dropping table %s" % db2)
+        ufload3.progress("Cleanup: dropping table %s" % db2)
         killCons(args, db2)
         psql(args, 'DROP DATABASE \"%s\"'%db2)
         return 1
@@ -211,11 +212,11 @@ def load_zip_into(args, db, f, sz):
 def load_dump_into(args, db, f, sz):
     tot = float(sz)
     if sz == 0:
-        ufload.progress("Note: No progress percent available.")
+        ufload3.progress("Note: No progress percent available.")
 
     db2 = db + "_" + str(os.getpid())
 
-    ufload.progress("Create database " + db2)
+    ufload3.progress("Create database " + db2)
     tablespace = ""
     if args.db_tablespace:
         tablespace = 'TABLESPACE "%s"'%args.db_tablespace
@@ -226,7 +227,7 @@ def load_dump_into(args, db, f, sz):
     # From here out, we need a try block, so that we can drop
     # the temp db if anything went wrong
     try:
-        ufload.progress("Restoring into %s" % db2)
+        ufload3.progress("Restoring into %s" % db2)
 
         cmd = pg_restore(args)
         cmd.append('--no-acl')
@@ -254,13 +255,13 @@ def load_dump_into(args, db, f, sz):
                     if tot != 0:
                         pct = n / tot * 100
                         if pct > next:
-                            ufload.progress("Loading data: %d%%" % int(pct))
+                            ufload3.progress("Loading data: %d%%" % int(pct))
                             next = int(pct / 10) * 10 + 10
 
             tf.close()
             cmd.append(tf.name)
 
-            ufload.progress("Starting restore. This will take some time.")
+            ufload3.progress("Starting restore. This will take some time.")
             try:
                 rc = _run(args, cmd)
             except KeyboardInterrupt:
@@ -292,21 +293,21 @@ def load_dump_into(args, db, f, sz):
                     if tot != 0:
                         pct = n / tot * 100
                         if pct > next:
-                            ufload.progress("Restoring: %d%%" % int(pct))
+                            ufload3.progress("Restoring: %d%%" % int(pct))
                             next = int(pct / 10) * 10 + 10
 
                 p.stdin.close()
-                ufload.progress("Restoring: 100%")
-                ufload.progress("Waiting for Postgres to finish restore")
+                ufload3.progress("Restoring: 100%")
+                ufload3.progress("Waiting for Postgres to finish restore")
                 rc = p.wait()
             else:
-                ufload.progress("Would run: " + str(cmd))
+                ufload3.progress("Would run: " + str(cmd))
                 rc = 0
 
         rcstr = "ok"
         if rc != 0:
             rcstr = "error %d" % rc
-        ufload.progress("Restore finished with result code: %s" % rcstr)
+        ufload3.progress("Restore finished with result code: %s" % rcstr)
         _checkrc(rc)
 
         #USELESS FOR SYNC SERVER Let's delete uninstalled versions
@@ -315,26 +316,26 @@ def load_dump_into(args, db, f, sz):
 
         _checkrc(delive(args, db2))
 
-        ufload.progress("Drop database " + db)
+        ufload3.progress("Drop database " + db)
         killCons(args, db)
         rc = psql(args, 'DROP DATABASE IF EXISTS \"%s\"' % db)
         _checkrc(rc)
 
-        ufload.progress("Rename database %s to %s" % (db2, db))
+        ufload3.progress("Rename database %s to %s" % (db2, db))
         rc = psql(args, 'ALTER DATABASE \"%s\" RENAME TO \"%s\"' % (db2, db))
         _checkrc(rc)
 
         return 0
     except dbException as e:
         # something went wrong, so drop the temp table
-        ufload.progress("Unexpected error %s" % sys.exc_info()[0])
-        ufload.progress("Cleanup: dropping db %s" % db2)
+        ufload3.progress("Unexpected error %s" % sys.exc_info()[0])
+        ufload3.progress("Cleanup: dropping db %s" % db2)
         killCons(args, db2)
         psql(args, 'DROP DATABASE \"%s\"' % db2)
         return e.rc
     except:
-        ufload.progress("Unexpected error %s" % sys.exc_info()[0])
-        ufload.progress("Cleanup: dropping db %s" % db2)
+        ufload3.progress("Unexpected error %s" % sys.exc_info()[0])
+        ufload3.progress("Cleanup: dropping db %s" % db2)
         killCons(args, db2)
         psql(args, 'DROP DATABASE \"%s\"' % db2)
         return 1
@@ -348,9 +349,9 @@ def load_dump_into(args, db, f, sz):
 # 4. set the backup directory
 def delive(args, db):
     if args.live:
-        ufload.progress("*** WARNING: The restored database has LIVE passwords and LIVE syncing and LIVE settings for automated imports/exports.")
+        ufload3.progress("*** WARNING: The restored database has LIVE passwords and LIVE syncing and LIVE settings for automated imports/exports.")
         if args.sync:
-            ufload.progress("(please note that ufload is not able to connect to the sync server using live passwords, please connect manually)")
+            ufload3.progress("(please note that ufload is not able to connect to the sync server using live passwords, please connect manually)")
         return 0
 
     adminuser = args.adminuser.lower()
@@ -362,11 +363,6 @@ def delive(args, db):
     if args.ss:
         ss = args.ss
 
-    # change the sync config to local
-    if args.db_prefix:
-        pfx = args.db_prefix + '_'
-    else:
-        pfx = ''
     rc = psql(args, 'alter table sync_client_sync_server_connection ADD COLUMN IF NOT EXISTS ufload_automatic_patching_prod_value boolean;', db)
     rc = psql(args, 'update sync_client_sync_server_connection set ufload_automatic_patching_prod_value=automatic_patching;', db)
     rc = psql(args, 'update sync_client_sync_server_connection set automatic_patching = \'f\', protocol = \'xmlrpc\', login = \'%s\', database = \'%s\', host = \'127.0.0.1\', port = %d;' % (adminuser, ss, port), db)
@@ -411,7 +407,7 @@ def delive(args, db):
 
     if args.silentupgrade:
         if not args.autosync:
-            ufload.progress("*** WARNING: Silent upgrade is enabled, but auto sync is not.")
+            ufload3.progress("*** WARNING: Silent upgrade is enabled, but auto sync is not.")
         rc = psql(args, 'update sync_client_sync_server_connection set automatic_patching = \'t\';', db)
         if rc != 0:
             return rc
@@ -451,7 +447,7 @@ def delive(args, db):
         rc = psql(args, 'update res_users set password = \'%s\' WHERE id = 1;' % args.adminpw, db)
 
     if args.nopwreset:
-        ufload.progress("*** WARNING: The restored database has LIVE passwords.")
+        ufload3.progress("*** WARNING: The restored database has LIVE passwords.")
         return 0
 
     # set the username of the admin account
@@ -529,7 +525,7 @@ def activate_silentupgrade(args, db):
     rc = psql(args, 'update sync_client_sync_server_connection set automatic_patching = \'t\';', db)
 
     if not args.autosync:
-        ufload.progress("*** WARNING: Silent upgrade is enabled, but auto sync is not.")
+        ufload3.progress("*** WARNING: Silent upgrade is enabled, but auto sync is not.")
 
     return rc
 
@@ -556,12 +552,7 @@ def killCons(args, db):
     # First, revoke CONNECT rights to the DB so there won't be any auto-connect issues
     psql(args, 'REVOKE CONNECT ON DATABASE %s FROM public' % db, 'postgres', True)
 
-    # For Postgres 8, it is procpid, for 9 it is pid
-    v = ver(args)
-    if len(v) > 1 and ' 9.' in v[0]:
-        col = 'pid'
-    else:
-        col = 'procpid'
+    col = 'pid'
 
     cmd = mkpsql(args, 'select %s from pg_stat_activity where datname = \'%s\';' % (col, db), 'postgres')
     for i in _run_out(args, cmd):
@@ -580,10 +571,10 @@ def get_hwid(args):
                                  "SYSTEM\ControlSet001\services\eventlog\Application\openerp-web-6.0",
                                  0, winreg.KEY_READ) as registry_key:
                 hwid, regtype = winreg.QueryValueEx(registry_key, "HardwareId")
-                ufload.progress("Hardware id from registry key: %s" % hwid)
+                ufload3.progress("Hardware id from registry key: %s" % hwid)
                 return hwid
         except WindowsError as e:
-            ufload._progress(e.message)
+            ufload3._progress(e.message)
             return None
     else:
         # Follow the same algorithm that Unifield uses (see sync_client.py)
@@ -621,11 +612,11 @@ def cleanDbs(args):
         ms = ps.search(d)
 
         if m == None and ms == None and d != '':
-            ufload.progress("Dropping database %s" % d)
+            ufload3.progress("Dropping database %s" % d)
             killCons(args, d)
             rc = psql(args, 'DROP DATABASE IF EXISTS \"%s\"'%d)
             if rc != 0:
-                ufload.progress("Error: unable to drop database %s" % d)
+                ufload3.progress("Error: unable to drop database %s" % d)
             else:
                 nb = nb + 1
 
@@ -637,7 +628,7 @@ def sync_link(args, hwid, db, sdb, all=False):
     rc = psql(args, 'insert into sync_server_entity (create_uid, create_date, write_date, write_uid, user_id, name, state) SELECT 1, now(), now(), 1, 1, \'%s\', \'validated\' FROM sync_server_entity WHERE NOT EXISTS (SELECT 1 FROM sync_server_entity WHERE name = \'%s\') ' % (instance, instance), sdb )
 
     if rc != 0:
-        ufload.progress('Unable to create the instance %s on the sync server. Please add it manually.' % instance)
+        ufload3.progress('Unable to create the instance %s on the sync server. Please add it manually.' % instance)
         #return rc
 
     if all:
@@ -660,7 +651,7 @@ def clean(args, db):
         i = _db_to_instance(args, d)
         #if not args.db_prefix and i and d not in toKeep and i in toClean:
         if i and d not in toKeep and i in toClean:
-            ufload.progress("Cleaning other database for instance %s: %s" % (i, d))
+            ufload3.progress("Cleaning other database for instance %s: %s" % (i, d))
             killCons(args, d)
             rc = psql(args, 'DROP DATABASE IF EXISTS \"%s\"'%d)
             if rc != 0:
@@ -721,7 +712,7 @@ def connect_instance_to_sync_server(args, sync_server, db):
         port = int(args.sync_xmlrpcport)
 
     try:
-        ufload.progress('Connecting instance %s to %s' % (db, sync_server))
+        ufload3.progress('Connecting instance %s to %s' % (db, sync_server))
 
         sock = xmlrpc.client.ServerProxy('http://127.0.0.1:%s/xmlrpc/common' % (port, ))
         uid = sock.login(db, args.adminuser.lower(), args.adminpw)
@@ -732,14 +723,14 @@ def connect_instance_to_sync_server(args, sync_server, db):
         sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'write', conn_ids, {'login' : args.connectionuser, 'password': args.connectionpw})
         sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'connect', conn_ids)
     except xmlrpc.client.Fault as e:
-         ufload.progress("Error: unable to connect instance to the sync server: %s" % e)
+         ufload3.progress("Error: unable to connect instance to the sync server: %s" % e)
     except:
-        ufload.progress("Unexpected error: unable to connect instance to the sync server: %s" % sys.exc_info()[0])
+        ufload3.progress("Unexpected error: unable to connect instance to the sync server: %s" % sys.exc_info()[0])
 
 def manual_sync(args, sync_server, db):
     if db.startswith('SYNC_SERVER'):
         return 0
-    ufload.progress("manual sync instance %s to sync server %s" % (db, sync_server))
+    ufload3.progress("manual sync instance %s to sync server %s" % (db, sync_server))
     netrpc = connect_rpc(args, db)
     sync_obj = netrpc.get('sync.client.sync_manager')
 
@@ -749,15 +740,15 @@ def manual_sync(args, sync_server, db):
 def manual_upgrade(args, sync_server, db):
     if db.startswith('SYNC_SERVER'):
         return 0
-    ufload.progress("manual update instance %s to sync server %s" % (db, sync_server))
+    ufload3.progress("manual update instance %s to sync server %s" % (db, sync_server))
     netrpc = connect_rpc(args, db)
     sync_obj = netrpc.get('sync_client.upgrade')
 
-    ufload.progress("Download patch")
+    ufload3.progress("Download patch")
     sync_ids = sync_obj.search([])
     result = sync_obj.download(sync_ids)
     if result:
-        ufload.progress("update Unifield")
+        ufload3.progress("update Unifield")
         result = sync_obj.do_upgrade(sync_ids)
     return result
 
@@ -804,16 +795,16 @@ def _parse_dsn(dsn):
 def archive(args):
     v = ver(args)
     if len(v) < 1 or '9.5' not in v[0]:
-        ufload.progress('Postgres 9.5 is required.')
+        ufload3.progress('Postgres 9.5 is required.')
         return 1
 
     for dsn in args.from_dsn:
         x = _parse_dsn(dsn)
         if 'dbname' not in x:
-            ufload.progress('DSN is missing dbname.')
+            ufload3.progress('DSN is missing dbname.')
             return 1
     
-        ufload.progress("Archive operations_event from %s" % x['dbname'])
+        ufload3.progress("Archive operations_event from %s" % x['dbname'])
         rc, out = _run(args, mkpsql(args, '''
 create extension if not exists dblink;
 insert into operations_event (instance, kind, time, remote_id, data)
@@ -825,9 +816,9 @@ insert into operations_event (instance, kind, time, remote_id, data)
        id integer,
        data text)
     on conflict do nothing;''' % (dsn,), 'archive'), get_out=True)
-        ufload.progress(_clean(out))
+        ufload3.progress(_clean(out))
 
-        ufload.progress("Archive operations_count from %s" % x['dbname'])
+        ufload3.progress("Archive operations_count from %s" % x['dbname'])
         rc, out = _run(args, mkpsql(args, '''
 create extension if not exists dblink;
 insert into operations_count (instance, kind, time, count, remote_id)
@@ -839,7 +830,7 @@ insert into operations_count (instance, kind, time, count, remote_id)
        count integer,
        id integer)
     on conflict do nothing;''' % (dsn,), 'archive'), get_out=True)
-        ufload.progress(_clean(out))
+        ufload3.progress(_clean(out))
 
 def _clean(out):
     ret = []
@@ -853,7 +844,7 @@ def _clean(out):
 
 
 def _zipChecksum(path):
-    ufload.progress("Validating patch checksum")
+    ufload3.progress("Validating patch checksum")
     with open(path, 'rb') as f:
         contents = f.read()
         # md5 accepts only chunks of 128*N bytes
@@ -864,7 +855,7 @@ def _zipChecksum(path):
 
 
 def _zipContents(path):
-    ufload.progress("Reading patch contents")
+    ufload3.progress("Reading patch contents")
     with open(path, 'rb') as f:
         return f.read()
     #return contents
@@ -872,14 +863,14 @@ def _zipContents(path):
 
 
 def installPatch(args, db='SYNC_SERVER_LOCAL'):
-    ufload.progress("Activating update_client module on %s database" % db)
+    ufload3.progress("Activating update_client module on %s database" % db)
     #Install the module update_client
     rc = psql(args, "UPDATE ir_module_module SET state = 'installed' WHERE name = 'update_client'", db)
     if rc != 0:
         return rc
 
     v = args.version
-    ufload.progress("Installing v.%s patch on %s database" % (v, db))
+    ufload3.progress("Installing v.%s patch on %s database" % (v, db))
 
     patch = os.path.normpath(args.patch)
 
@@ -898,11 +889,11 @@ def installPatch(args, db='SYNC_SERVER_LOCAL'):
         version_line.activate_revision(line_ids)
         return 0
     else:
-        ufload.progress("The v.%s patch on %s database is already installed!!" % (v, db))
+        ufload3.progress("The v.%s patch on %s database is already installed!!" % (v, db))
         return -1
 
 def installUserRights(args, db='SYNC_SERVER_LOCAL'):
-    ufload.progress('Install user rights : {}'.format(args.user_rights_zip))
+    ufload3.progress('Install user rights : {}'.format(args.user_rights_zip))
     if not args.user_rights_zip or not os.path.isfile(args.user_rights_zip):
         raise ValueError('The file {} not exist'.format(args.user_rights_zip))
 
@@ -916,17 +907,17 @@ def installUserRights(args, db='SYNC_SERVER_LOCAL'):
 
     sync_obj = netrpc.get('sync_server.user_rights.add_file')
     # netrpc.config['run_foreground'] = True
-    ufload.progress("Download User Rights")
+    ufload3.progress("Download User Rights")
 
     load_id = sync_obj.create( {'name': ur_name, 'zip_file': str(base64.b64encode(plain_zip), 'utf8')})
     result = sync_obj.import_zip( [load_id], context)
     result = sync_obj.read( load_id, ['state', 'message'])
     if result['state'] != 'done':
-        ufload.progress('Unable to load UR: %s' % result['message'])
+        ufload3.progress('Unable to load UR: %s' % result['message'])
         raise xmlrpc.client.Fault(result['message'])
     else:
         result = sync_obj.done( [load_id])
-        ufload.progress('New UR file loaded')
+        ufload3.progress('New UR file loaded')
         return result
 
 
@@ -935,6 +926,6 @@ def installUserRights(args, db='SYNC_SERVER_LOCAL'):
 
 def updateInstance(inst):
     #Call the do_login url in order to trigger the sync (should work even with wrong credentials)
-    ufload.progress("Try to log into instance %s using wrong credentials" % inst)
+    ufload3.progress("Try to log into instance %s using wrong credentials" % inst)
     urllib.request("http://127.0.0.1:8061/openerp/do_login?target=/&user=ufload&show_password=ufload&db_user_pass=%s" % inst)
     return 0
