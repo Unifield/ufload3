@@ -82,6 +82,21 @@ def _file_to_db(args, fn):
         return args.db_prefix + "_" + db
     return db
 
+def _cmdSync(args):
+    dbs = ufload3.db._run_out(args, ufload3.db.mkpsql(args, "select datname from pg_database  where pg_get_userbyid(datdba) = current_user order by datname;"))
+    sync_db = args.ss or 'SYNC_SERVER_LOCAL'
+    for db in dbs:
+        db = db.strip()
+        if 'SYNC' in db:
+            continue
+        if args.i and not re.search(args.i, db):
+            continue
+        try:
+            ufload3.db.connect_instance_to_sync_server(args, sync_db, db)
+            ufload3.db.manual_sync(args, sync_db, db)
+        except Exception as e:
+            ufload3._progress("Unable to sync %s %s" %(db, e))
+
 
 def _cmdArchive(args):
     if not _required(args, [ 'from_dsn' ]):
@@ -856,6 +871,16 @@ def parse():
     pUpgrade.add_argument("-force-sync", dest='forcesync', action="store_true", help="Force synchronization with the sync server of all instances")
     pUpgrade.set_defaults(func=_cmdUpgrade)
 
+
+    pSync = sub.add_parser('sync', help="Start sync")
+    pSync.add_argument("-adminuser", default='admin', help="the admin username to log into the instances")
+    pSync.add_argument("-adminpw", default='admin', help="the admin password to log into the instances")
+    pSync.add_argument("-connectionuser", default='sandbox_sync-user', help="User to connect instance to the sync server")
+    pSync.add_argument("-connectionpw", default='Only4Sandbox', help="Password to connect instance to the sync server")
+    pSync.add_argument("-i", help="Regex of iinstances to sync, default = all")
+    pSync.set_defaults(func=_cmdSync)
+
+
     pClean = sub.add_parser('clean', help="Clean DBs with a wrong name format")
     #pClean.add_argument("-i", action="append", help="instances to work on (matched as a substring, default = all)")
     pClean.set_defaults(func=_cmdClean)
@@ -874,7 +899,8 @@ def parse():
                        (pLs, "ls"),
                        (pRestore, "restore"),
                        (pArchive, "archive"),
-                       (pUpgrade, "upgrade")):
+                       (pUpgrade, "upgrade"),
+                       (pSync, "restore")):
         if conffile.has_section(subn):
             subp.set_defaults(**dict(conffile.items(subn)))
 

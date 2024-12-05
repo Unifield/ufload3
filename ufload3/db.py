@@ -720,8 +720,11 @@ def connect_instance_to_sync_server(args, sync_server, db):
 
 
         conn_ids = sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'search', [])
-        sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'write', conn_ids, {'login' : args.connectionuser, 'password': args.connectionpw})
-        sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'connect', conn_ids)
+        if conn_ids:
+            current_state = sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'read', conn_ids[0], ['state'])
+            if current_state['state'] != 'Connected':
+                sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'write', conn_ids, {'login' : args.connectionuser, 'password': args.connectionpw})
+                sock.execute(db, uid, args.adminpw, 'sync.client.sync_server_connection', 'connect', conn_ids)
     except xmlrpc.client.Fault as e:
          ufload3.progress("Error: unable to connect instance to the sync server: %s" % e)
     except:
