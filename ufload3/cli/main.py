@@ -95,8 +95,11 @@ def _cmdSync(args):
             ufload3.db.connect_instance_to_sync_server(args, sync_db, db)
             ufload3.db.manual_sync(args, sync_db, db)
         except Exception as e:
-            ufload3._progress("Unable to sync %s %s" %(db, e))
+            ufload3.progress("Unable to sync %s %s" %(db, e))
 
+def _cmdVersion(args):
+    print(ufload3.__version__)
+    sys.exit(1)
 
 def _cmdArchive(args):
     if not _required(args, [ 'from_dsn' ]):
@@ -884,6 +887,9 @@ def parse():
     pClean = sub.add_parser('clean', help="Clean DBs with a wrong name format")
     #pClean.add_argument("-i", action="append", help="instances to work on (matched as a substring, default = all)")
     pClean.set_defaults(func=_cmdClean)
+
+    pVersion = sub.add_parser('version', help="Display ufload3 version")
+    pVersion.set_defaults(func=_cmdVersion)
 
     # read from $HOME/.ufload first
     conffile = configparser.ConfigParser()
