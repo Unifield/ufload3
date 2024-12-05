@@ -1,6 +1,6 @@
 [project]
 name = "ufload3"
-version = "1.1"
+dynamic = ["version"]
 authors = [
   { name="MSF" },
 ]
@@ -22,3 +22,6 @@ Homepage = "https://github.com/Unifield/ufload3"
 
 [project.scripts]
 ufload3 = "ufload3.cli.main:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "ufload3.__version__"}
