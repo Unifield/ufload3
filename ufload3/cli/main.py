@@ -97,6 +97,9 @@ def _cmdRestore(args):
         ufload3.progress("Logo path %s not found" % args.logo)
         return 2
 
+    if args.attachment_path and not os.path.exists(args.attachment_path):
+        os.mkdir(args.attachment_path)
+
     if args.autosync is not None:
         if not _required(args, [ 'sync' ]):
             if not _required(args, [ 'synclight' ]):
@@ -118,6 +121,9 @@ def _cmdRestore(args):
 
     if rc != 0:
         return rc
+
+    if args.attachment_path:
+        ufload3.db.set_attchment(args, dbs)
 
     ss = 'SYNC_SERVER_LOCAL'
     if args.ss is not None:
@@ -314,7 +320,7 @@ def _multiRestore(args):
                 continue
 
             filesize = os.path.getsize(filename) / (1024 * 1024)
-            ufload3.progress("File size: %s Mb" % filesize)
+            ufload3.progress("File size: %s Mb" % round(filesize))
 
             n= ufload3.cloud.peek_inside_local_file(j[0], filename)
             if n is None:
@@ -822,6 +828,7 @@ def parse():
     pRestore.add_argument("-logo", dest='logo', help="path to the new company logo")
     pRestore.add_argument("-banner", dest='banner', help="text to display in the banner")
     pRestore.add_argument("-jobs", dest='jobs', type=int, help="Number of concurrent pg_restore jobs")
+    pRestore.add_argument("-attachment-path", dest='attachment_path', help="Path to attachment folder (db name will be automatically added)")
     pRestore.set_defaults(func=_cmdRestore)
 
     pArchive = sub.add_parser('archive', help="Copy new data into the database.")

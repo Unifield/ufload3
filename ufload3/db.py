@@ -929,3 +929,15 @@ def updateInstance(inst):
     ufload3.progress("Try to log into instance %s using wrong credentials" % inst)
     urllib.request("http://127.0.0.1:8061/openerp/do_login?target=/&user=ufload&show_password=ufload&db_user_pass=%s" % inst)
     return 0
+
+def set_attchment(args, dbs):
+    if args.attachment_path:
+        for db in dbs:
+            i_name =_run_out(args, mkpsql(args, "select name from res_company", db))
+            if i_name and i_name[0]:
+                i_path = os.path.join(args.attachment_path, i_name[0].strip())
+                if not os.path.exists(i_path):
+                    os.mkdir(i_path)
+                _run(args, mkpsql(args, "update attachment_config set name='%s';" % (i_path, ), db))
+
+    return True
