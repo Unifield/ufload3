@@ -33,7 +33,7 @@ def _progress(p):
         #Create log file (if it does not exist, else append to existing file)
         filename = '%s/uf_%s.log' % (args.local, starttime)
         #Write logs to file
-        with open(filename, 'ab') as file:
+        with open(filename, 'a') as file:
             #file.write('\n'.join(_logs))
             file.write('%s\n' % p)
 
