@@ -168,6 +168,8 @@ def load_zip_into(args, db, f, sz):
         psql(args, "update sync_client_survey set active ='f'", db2)
         if 'SYNC' in db2:
             psql(args, "update sync_server_survey set active ='f'", db2)
+            psql(args, 'alter table sync_server_entity ADD COLUMN IF NOT EXISTS ufload_hardware_id_prod_value varchar(128);', db2)
+            psql(args, 'update sync_server_entity set ufload_hardware_id_prod_value=hardware_id;', db2)
 
         # Analyze DB to optimize queries (rebuild indexes...)
         if args.analyze:
@@ -266,6 +268,10 @@ def load_dump_into(args, db, f, sz):
                 rc = _run(args, cmd)
             except KeyboardInterrupt:
                 raise dbException(1)
+
+            if 'SYNC' in db2:
+                psql(args, 'alter table sync_server_entity ADD COLUMN IF NOT EXISTS ufload_hardware_id_prod_value varchar(128);', db2)
+                psql(args, 'update sync_server_entity set ufload_hardware_id_prod_value=hardware_id;', db2)
 
             # clean up the temp file
             try:
