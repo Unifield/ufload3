@@ -505,6 +505,22 @@ def delive(args, db):
                 rc = psql(args, " insert into res_groups_users_rel (uid, gid) (select %s, id from res_groups where name='%s');" % (new_userid, new_group), db)
                 if rc != 0:
                     return rc
+    if args.usersinfo:
+        for userinfo in args.usersinfo.split(';'):
+            try:
+                login, new_user_email, new_user_dpt = userinfo.split(':')
+                if new_user_dpt:
+                    psql(args, """ update res_users u set context_department_id = d.id
+                        from hr_department d
+                            where d.name = '%s' and u.login = '%s' """ % (new_user_dpt, login), db)
+
+                if new_user_email:
+                    rc, address_id = psql(args, """ insert into res_partner_address (name, email) values ('%s', '%s') returning id """ % (login, new_user_email), db, silent=True)
+                    if address_id:
+                        psql(args,"update res_users set address_id=%s where login='%s'" % (address_id, login), db)
+
+            except ValueError:
+                ufload3.progress("*** WARNING: invalid format %s" % userinfo)
 
     # ok, delive finished with no problems
     return 0
@@ -575,7 +591,7 @@ def get_hwid(args):
                 ufload3.progress("Hardware id from registry key: %s" % hwid)
                 return hwid
         except WindowsError as e:
-            ufload3._progress(e.message)
+            ufload3._progress(e)
             return None
     else:
         # Follow the same algorithm that Unifield uses (see sync_client.py)
