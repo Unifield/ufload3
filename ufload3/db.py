@@ -193,6 +193,8 @@ def load_zip_into(args, db, f, sz):
         # analyze db
         psql(args, 'analyze', db, silent=True)
 
+        instantiate(args, db)
+
         for d in _allDbs(args):
             if d.startswith(db) and d!=db:
                 ufload3.progress("Cleaning other database for instance %s: %s" % (db, d))
@@ -330,6 +332,7 @@ def load_dump_into(args, db, f, sz):
         ufload3.progress("Rename database %s to %s" % (db2, db))
         rc = psql(args, 'ALTER DATABASE \"%s\" RENAME TO \"%s\"' % (db2, db))
         _checkrc(rc)
+        instantiate(args, db)
 
         return 0
     except dbException as e:
@@ -346,6 +349,22 @@ def load_dump_into(args, db, f, sz):
         psql(args, 'DROP DATABASE \"%s\"' % db2)
         return 1
 
+def instantiate(args, db):
+    if args.instantiate:
+        port = 8069
+        if args.sync_xmlrpcport:
+            port = int(args.sync_xmlrpcport)
+
+        try:
+            host = '127.0.0.1'
+            transport = xmlrpc.client.Transport()
+            connection = transport.make_connection(host)
+            connection.timeout = 4
+            sock = xmlrpc.client.ServerProxy('http://%s:%s/xmlrpc/common' % (host, port), transport=transport)
+            uid = sock.login(db, args.adminuser.lower(), args.adminpw)
+        except Exception as e:
+            ufload3.progress("non blocking error at first connection %s" % e)
+
 # De-live uses psql to change a restored database taken from a live backup
 # into a non-production, non-live database. It:
 # 1. stomps all existing passwords
@@ -354,6 +373,7 @@ def load_dump_into(args, db, f, sz):
 # 4. remove the automated imports/exports settings
 # 4. set the backup directory
 def delive(args, db):
+
     if args.live:
         ufload3.progress("*** WARNING: The restored database has LIVE passwords and LIVE syncing and LIVE settings for automated imports/exports.")
         if args.sync:
@@ -431,12 +451,15 @@ def delive(args, db):
          psql(args, "update communication_config set message=$ESC$%s$ESC$;" % args.banner, db)
 
     # Set the backup directory
-    directory = "E'd:\\\\'"
+    directory = 'd:\\'
     if sys.platform != "win32" and args.db_host in [ None, 'ct0', 'localhost' ]:
         # when loading on non-windows, to a local database, use /tmp
-        directory = '\'/tmp\''
+        directory = '/tmp'
 
-    rc = psql(args, 'update backup_config set beforemanualsync=\'f\', beforepatching=\'f\', aftermanualsync=\'f\', beforeautomaticsync=\'f\', afterautomaticsync=\'f\', scheduledbackup=\'f\', name = %s;' % directory, db)
+    if args.backuppath:
+        directory = args.backuppath
+
+    rc = psql(args, 'update backup_config set beforemanualsync=\'f\', beforepatching=\'f\', aftermanualsync=\'f\', beforeautomaticsync=\'f\', afterautomaticsync=\'f\', scheduledbackup=\'f\', name = \'%s\';' % directory, db)
     if rc != 0:
         return rc
 
@@ -642,11 +665,12 @@ def cleanDbs(args):
 def sync_link(args, hwid, db, sdb, all=False):
     instance = _db_to_instance(args, db)
     #Create the instance in the sync server if it does not already exist
-    rc = psql(args, 'insert into sync_server_entity (create_uid, create_date, write_date, write_uid, user_id, name, state) SELECT 1, now(), now(), 1, 1, \'%s\', \'validated\' FROM sync_server_entity WHERE NOT EXISTS (SELECT 1 FROM sync_server_entity WHERE name = \'%s\') ' % (instance, instance), sdb )
+    # deactivated: creation does not help, instance must be linked to sync groups and other instances
+    #rc = psql(args, 'insert into sync_server_entity (create_uid, create_date, write_date, write_uid, user_id, name, state) SELECT 1, now(), now(), 1, 1, \'%s\', \'validated\' FROM sync_server_entity WHERE NOT EXISTS (SELECT 1 FROM sync_server_entity WHERE name = \'%s\') ' % (instance, instance), sdb )
 
-    if rc != 0:
-        ufload3.progress('Unable to create the instance %s on the sync server. Please add it manually.' % instance)
-        #return rc
+    #if rc != 0:
+    #    ufload3.progress('Unable to create the instance %s on the sync server. Please add it manually.' % instance)
+    #    #return rc
 
     if all:
         # Update hardware id for every instance
@@ -718,8 +742,8 @@ def sync_server_all_sandbox_sync_user(args, db='SYNC_SERVER_LOCAL'):
         _run_out(args, mkpsql(args, "update res_users set password ='%s' where login='%s';" % (args.connectionpw, args.connectionuser) , db))
 
 def connect_instance_to_sync_server(args, sync_server, db):
-    #Temporary desactivation of auto-connect
-    #return 0
+    # desactivation because of auto-connect
+    return 0
 
     # if db.startswith('SYNC_SERVER'):
     #    return 0
