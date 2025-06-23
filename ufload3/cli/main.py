@@ -848,6 +848,8 @@ def parse():
     pRestore.add_argument("-banner", dest='banner', help="text to display in the banner")
     pRestore.add_argument("-jobs", dest='jobs', type=int, help="Number of concurrent pg_restore jobs")
     pRestore.add_argument("-attachment-path", dest='attachment_path', help="Path to attachment folder (db name will be automatically added)")
+    pRestore.add_argument("-instantiate", dest='instantiate', action="store_true", help="after restore, login to the instance to trigger modules load")
+    pRestore.add_argument("-backuppath", dest='backuppath', help="path of Backup configuration")
     pRestore.set_defaults(func=_cmdRestore)
 
     pArchive = sub.add_parser('archive', help="Copy new data into the database.")
