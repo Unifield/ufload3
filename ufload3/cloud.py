@@ -74,7 +74,11 @@ def get_cloud_info(args, sub_dir=''):
         'site': dir,
         'path': args.cloud_path,
         'login': args.user,
-        'password': pword
+        'password': pword,
+        'tenant': args.tenant,
+        'client_id': args.client_id,
+        'thumbprint': args.thumbprint,
+        'cert_content': args.cert_content,
     }
 
     return ret
@@ -97,7 +101,7 @@ def get_onedrive_connection(args):
 
     try:
         dav = webdav.Client(url.netloc, port=url.port, protocol=url.scheme, username=info['login'],
-                            password=info['password'], path=path)
+                            password=info['password'], tenant=info['tenant'], client_id= info['client_id'], thumbprint=info['thumbprint'], cert_content=info['cert_content'], path=path)
         return dav
     except webdav.ConnectionFailed as e:
         ufload3.progress('Unable to connect: {}'.format(e))

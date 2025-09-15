@@ -14,7 +14,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "Office365-REST-Python-Client==2.3.3",
+    "Office365-REST-Python-Client==2.6.2",
 ]
 
 [project.urls]

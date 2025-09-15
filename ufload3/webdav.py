@@ -20,7 +20,7 @@ class PasswordFailed(Exception):
     pass
 
 class Client(object):
-    def __init__(self, host, port=0, auth=None, username=None, password=None, protocol='http', path=None):
+    def __init__(self, host, port=0, auth=None, username=None, password=None, tenant=None, client_id=None, thumbprint=None, cert_content=None, protocol='http', path=None):
         self.requests_timeout = 45
         self.session_uuid = False
         self.session_offset = -1
@@ -29,6 +29,12 @@ class Client(object):
         self.username = username
         self.password = password
 
+        self.tenant = tenant
+        self.client_id = client_id
+        self.thumbprint = thumbprint
+        self.cert_content = cert_content
+
+
         self.path = path or ''
 
         self.url = '{0}://{1}'.format(protocol, host)
@@ -36,18 +42,31 @@ class Client(object):
         self.login()
 
     def login(self):
-        self.request = ClientContext(urljoin(self.url, self.path))
-        self.request.with_user_credentials(self.username, self.password)
-        if not isinstance(self.request.authentication_context._provider, SamlTokenProvider) or \
-                not self.request.authentication_context._provider.get_authentication_cookie():
-            raise requests.exceptions.RequestException(self.request.get_last_error())
+        baseurl = urljoin(self.url, self.path)
+        self.request = ClientContext(baseurl)
 
-        # get the server_site url
-        if not self.path.startswith('/'):
-            self.path = '/%s' % self.path
-        options = RequestOptions(self.url)
-        self.request.ensure_form_digest(options)
-        baseurl = self.request._contextWebInformation.WebFullUrl
+        if not self.tenant:
+            self.request.with_user_credentials(self.username, self.password)
+            if not isinstance(self.request.authentication_context._provider, SamlTokenProvider) or \
+                    not self.request.authentication_context._provider.get_authentication_cookie():
+                raise requests.exceptions.RequestException(self.request.get_last_error())
+
+            # get the server_site url
+            if not self.path.startswith('/'):
+                self.path = '/%s' % self.path
+            options = RequestOptions(self.url)
+            self.request._ensure_form_digest(options)
+            baseurl = self.request._contextWebInformation.WebFullUrl
+        else:
+            self.ctx = self.request.with_client_certificate(
+                tenant=self.tenant,
+                client_id=self.client_id,
+                #cert_path=self.cert_path,
+                private_key=self.cert_content,
+                thumbprint=self.thumbprint,
+            )
+            self.ctx.web.get().execute_query()
+
 
         if not baseurl:
             raise requests.exceptions.RequestException("Full Url not found %s" % self.path)
@@ -72,8 +91,8 @@ class Client(object):
         options.set_header("X-HTTP-Method", method)
         options.set_header('Accept', 'application/json')
         options.set_header('Content-Type', 'application/json')
-        self.request.authenticate_request(options)
-        self.request.ensure_form_digest(options)
+        self.request._authenticate_request(options)
+        self.request._ensure_form_digest(options)
 
         if session:
             return session.post(url, data=data, headers=options.headers, auth=options.auth, timeout=self.requests_timeout)
@@ -211,8 +230,8 @@ class Client(object):
         options.method = HttpMethod.Get
         options.set_header("X-HTTP-Method", "GET")
         options.set_header('accept', 'application/json;odata=verbose')
-        self.request.authenticate_request(options)
-        self.request.ensure_form_digest(options)
+        self.request._authenticate_request(options)
+        self.request._ensure_form_digest(options)
         result = requests.get(url=request_url, headers=options.headers, auth=options.auth)
         if result.status_code not in (200, 201):
             raise requests.exceptions.RequestException(self.parse_error(result))
@@ -236,8 +255,8 @@ class Client(object):
         retry = 5
         while retry:
             try:
-                self.request.authenticate_request(options)
-                self.request.ensure_form_digest(options)
+                self.request._authenticate_request(options)
+                self.request._ensure_form_digest(options)
                 with requests.get(url=request_url, headers=options.headers, auth=options.auth, stream=True, timeout=120) as r:
                     if r.status_code not in (200, 201):
                         error = self.parse_error(r)
