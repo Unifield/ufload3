@@ -233,9 +233,6 @@ def _dirRestore(args):
         return 2, None
 
 def _multiRestore(args):
-    if not _required(args, [ 'user', 'pw' ]):
-        ufload3.progress('With no -file or -dir argument, cloud credentials are mandatory.')
-        return 2, None
 
     if args.i is None:
         if not _required(args, [ 'oc' ]):
@@ -308,7 +305,7 @@ def _multiRestore(args):
 
     ufload3.progress("Instances to be restored: %s" % ", ".join(list(instances.keys())))
     dbs=[]
-    pattern = re.compile('.*-[A-Z]{1}[a-z]{2}\.zip$')
+    pattern = re.compile(r'.*-[A-Z]{1}[a-z]{2}\.zip$')
 
     for i in instances:
 
@@ -491,8 +488,17 @@ def _syncLink(args, dbs, sdb):
 
 
 def _cmdLs(args):
-    if not _required(args, [ 'user', 'pw', 'oc' ]):
+    if not _required(args, [ 'tenant', 'client_id', 'oc' ]):
         return 2
+    if not args.cert_path and not args.cert_content:
+        ufload3.progress('Argument --cert-content or --cert-path is required for this sub-command.')
+        return 2
+
+    if args.cert_path:
+        with open(args.cert_path, 'r') as c:
+            args.cert_content = c.read()
+
+
     if args.subdir is None:
         args.subdir = ''
 
@@ -563,14 +569,14 @@ def _cmdUpgrade(args):
             return 1
 
         #Download the patch
-        patches.sort(key=lambda s: list(map(int, re.split('\.|-|p',re.search('uf(.+?)\.patch\.zip',  s[1], re.I).group(1)))))
+        patches.sort(key=lambda s: list(map(int, re.split(r'\.|-|p',re.search(r'uf(.+?)\.patch\.zip',  s[1], re.I).group(1)))))
         i = 0
         for j in patches:
             filename = dav.download(j[2], j[1])
 
             #Set patch and version args
             args.patch = filename
-            m = re.search('(.+?)\.patch\.zip', filename)
+            m = re.search(r'(.+?)\.patch\.zip', filename)
             if m:
                 args.version = m.group(1)
 
@@ -727,7 +733,7 @@ def _cmdUpgrade(args):
         if len(patches) == 0:
             ufload3.progress("No User Rights found.")
             return 1
-        patches.sort(key=lambda s: list(map(int, re.split('\.|-|p',re.search('User Rights v(.+?).zip',  s[1], re.I).group(1)))))
+        patches.sort(key=lambda s: list(map(int, re.split(r'\.|-|p',re.search('User Rights v(.+?).zip',  s[1], re.I).group(1)))))
 
         urfilename = None
         for j in patches:
@@ -788,8 +794,9 @@ spinner = spinning_cursor()
 def parse():
     parser = argparse.ArgumentParser(prog='ufload3')
 
-    parser.add_argument("-user", help="Cloud username")
-    parser.add_argument("-pw", help="Cloud password")
+    parser.add_argument("-tenant", help="Cloud Tenant")
+    parser.add_argument("-client-id", help="Cloud App-Id")
+    parser.add_argument("-cert-path", help="Cloud CertPath")
     parser.add_argument("-oc", help="OC (OCG, OCA and OCB accepted) - optional for the restore command (if not provided, ufload will try and deduce the right OC(s) from the name of the requested instances)")
 
     parser.add_argument("-syncuser", help="username to access the sync server backup")

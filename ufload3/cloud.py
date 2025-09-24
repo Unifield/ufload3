@@ -49,9 +49,6 @@ def instance_to_dir(instance):
 
 def get_cloud_info(args, sub_dir=''):
 
-    #Cloud password is encrypted
-    pword = _decrypt(args.pw)
-
     #Cloud path depends on the OC
     if args.oc:
         dir = '/personal/UF_' + args.oc.upper() + '_msf_geneva_msf_org/'
@@ -73,11 +70,8 @@ def get_cloud_info(args, sub_dir=''):
         'dir': dir + sub,
         'site': dir,
         'path': args.cloud_path,
-        'login': args.user,
-        'password': pword,
         'tenant': args.tenant,
         'client_id': args.client_id,
-        'thumbprint': args.thumbprint,
         'cert_content': args.cert_content,
     }
 
@@ -88,10 +82,12 @@ def get_onedrive_connection(args):
     info = get_cloud_info(args)
     if not info.get('url'):
         ufload3.progress('URL is not set!')
-    if not info.get('login'):
-        ufload3.progress('login is not set!')
-    if not info.get('password'):
-        ufload3.progress('Password is not set!')
+    if not info.get('tenant'):
+        ufload3.progress('Tenant is not set!')
+    if not info.get('client_id'):
+        ufload3.progress('Client_id is not set!')
+    if not info.get('cert_content'):
+        ufload3.progress('Cert is not set!')
 
     url = urlparse(info['url'])
     if not url.netloc:
@@ -100,8 +96,7 @@ def get_onedrive_connection(args):
     path = info.get('site') + url.path
 
     try:
-        dav = webdav.Client(url.netloc, port=url.port, protocol=url.scheme, username=info['login'],
-                            password=info['password'], tenant=info['tenant'], client_id= info['client_id'], thumbprint=info['thumbprint'], cert_content=info['cert_content'], path=path)
+        dav = webdav.Client(url.netloc, tenant=info['tenant'], client_id= info['client_id'], cert_content=info['cert_content'], path=path)
         return dav
     except webdav.ConnectionFailed as e:
         ufload3.progress('Unable to connect: {}'.format(e))
@@ -124,24 +119,20 @@ def _get_all_files_and_timestamp(dav, d):
     ret = []
     for f in all_zip:
         #if not f['Name'] or f['Name'][-1] == '/':
-        if not f['Name']:
+        if not f.name:
             continue
-
-        # We try to extract a timestamp to get an idea of the creation date
-        #  Format: Mon, 14 Mar 2016 03:31:40 GMT
-        t = time.strptime(f['TimeLastModified'], '%Y-%m-%dT%H:%M:%SZ')
 
         # We don't take into consideration backups that are too recent.
         # Otherwise they could be half uploaded (=> corrupted)
-        if abs(time.time() - time.mktime(t)) < 900:
+        if abs(time.time() - f.time_last_modified.timestamp()) < 900:
             continue
 
         # ufload3.progress('File found: %s' % f['Name'])
 
-        if f['Name'].split(".")[-1] != "zip":
-            logging.warn("Ignoring non-zipfile: %s" % f['Name'])
+        if f.name.split(".")[-1] != "zip":
+            logging.warn("Ignoring non-zipfile: %s" % f.name)
             continue
-        ret.append((t, f['Name'], f['ServerRelativeUrl']))
+        ret.append((f.time_last_modified, f.name, f.serverRelativeUrl))
     return ret
 
 # returns True if x has instance as a substring

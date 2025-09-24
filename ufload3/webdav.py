@@ -2,15 +2,88 @@
 
 import requests
 from office365.sharepoint.client_context import ClientContext
-from office365.runtime.http.request_options import RequestOptions
-from office365.runtime.http.http_method import HttpMethod
-from office365.runtime.auth.providers.saml_token_provider import SamlTokenProvider
-import uuid
+from office365.runtime.client_runtime_context import ClientRuntimeContext
+from office365.runtime.client_request_exception import ClientRequestException
+from office365.sharepoint.files.file import File
+from office365.sharepoint.folders.folder import Folder
+from office365.runtime.queries.service_operation import ServiceOperationQuery
+from cryptography.x509 import load_pem_x509_certificate
+from cryptography.hazmat.primitives import hashes
+
+def move_to_newname(self, destination, newname, flag):
+    """Moves the file to the specified destination url.
+
+    :param str or office365.sharepoint.folders.folder.Folder destination: Specifies the existing folder or folder
+         site relative url
+    :param str new file name
+    :param int flag: Specifies the kind of move operation.
+    """
+
+    def _moveto(destination_folder):
+        # type: (Folder) -> None
+        file_url = "/".join([str(destination_folder.serverRelativeUrl), newname])
+
+        params = {"newurl": file_url, "flags": flag}
+        qry = ServiceOperationQuery(self, "moveto", params)
+        self.context.add_query(qry)
+
+        def _update_file(return_type):
+            self.set_property("ServerRelativeUrl", file_url)
+
+        self.context.after_query_execute(_update_file)
+
+    def _source_file_resolved():
+        if isinstance(destination, Folder):
+            destination.ensure_property("ServerRelativeUrl", _moveto, destination)
+        else:
+            self.context.web.ensure_folder_path(destination).get().after_execute(
+                _moveto
+            )
+
+    self.ensure_properties(["ServerRelativeUrl", "Name"], _source_file_resolved)
+    return self
+
+File.move_to_newname = move_to_newname
+
 import logging
 import os
 import posixpath
-import time
 from urllib.parse import urlparse, urljoin
+from time import sleep
+
+def execute_query_retry(
+    self,
+    max_retry=5,
+    timeout_secs=5,
+    success_callback=None,
+    failure_callback=None,
+    exceptions=(ClientRequestException,),
+):
+    """
+    Executes the current set of data retrieval queries and method invocations and retries it if needed.
+
+    :param int max_retry: Number of times to retry the request
+    :param int timeout_secs: Seconds to wait before retrying the request.
+    :param (office365.runtime.client_object.ClientObject)-> None success_callback:
+    :param (int, requests.exceptions.RequestException)-> None failure_callback:
+    :param exceptions: tuple of exceptions that we retry
+    """
+    retry = 1
+    while True:
+        try:
+            self.execute_query()
+            if callable(success_callback):
+                success_callback(self.current_query.return_type)
+            break
+        except exceptions as e:
+            if retry > max_retry:
+                raise
+            retry += 1
+            self.add_query(self.current_query)
+            if callable(failure_callback):
+                failure_callback(retry, e)
+            sleep(timeout_secs)
+ClientRuntimeContext.execute_query_retry=execute_query_retry
 
 
 class ConnectionFailed(Exception):
@@ -20,141 +93,97 @@ class PasswordFailed(Exception):
     pass
 
 class Client(object):
-    def __init__(self, host, port=0, auth=None, username=None, password=None, tenant=None, client_id=None, thumbprint=None, cert_content=None, protocol='http', path=None):
-        self.requests_timeout = 45
-        self.session_uuid = False
-        self.session_offset = -1
-        self.session_nb_error = 0
-
-        self.username = username
-        self.password = password
-
+    def __init__(self, host, tenant, client_id, cert_content=False, cert_path=False, max_retry=1, path=None):
         self.tenant = tenant
         self.client_id = client_id
-        self.thumbprint = thumbprint
+        if not cert_content and cert_path:
+            with open(cert_path, 'r') as c:
+                cert_content = c.read()
         self.cert_content = cert_content
-
+        cert = load_pem_x509_certificate(bytes(self.cert_content, 'utf8'))
+        self.thumbprint = cert.fingerprint(hashes.SHA1()).hex()
 
         self.path = path or ''
 
-        self.url = '{0}://{1}'.format(protocol, host)
+        self.url = 'https://{0}'.format(host)
 
+        self.max_retry = max_retry
         self.login()
 
     def login(self):
-        baseurl = urljoin(self.url, self.path)
-        self.request = ClientContext(baseurl)
+        full_path = urljoin(self.url, self.path)
+        self.request = ClientContext(full_path)
 
-        if not self.tenant:
-            self.request.with_user_credentials(self.username, self.password)
-            if not isinstance(self.request.authentication_context._provider, SamlTokenProvider) or \
-                    not self.request.authentication_context._provider.get_authentication_cookie():
-                raise requests.exceptions.RequestException(self.request.get_last_error())
-
-            # get the server_site url
-            if not self.path.startswith('/'):
-                self.path = '/%s' % self.path
-            options = RequestOptions(self.url)
-            self.request._ensure_form_digest(options)
-            baseurl = self.request._contextWebInformation.WebFullUrl
-        else:
-            self.ctx = self.request.with_client_certificate(
-                tenant=self.tenant,
-                client_id=self.client_id,
-                #cert_path=self.cert_path,
-                private_key=self.cert_content,
-                thumbprint=self.thumbprint,
-            )
-            self.ctx.web.get().execute_query()
-
-
-        if not baseurl:
+        self.request.with_client_certificate(
+            tenant=self.tenant,
+            client_id=self.client_id,
+            private_key=self.cert_content,
+            thumbprint=self.thumbprint,
+        )
+        self.baseurl = self.request._get_context_web_information().WebFullUrl
+        self.request._auth_context.url = self.baseurl
+        if not self.baseurl:
             raise requests.exceptions.RequestException("Full Url not found %s" % self.path)
-        if not baseurl.endswith('/'):
-            baseurl = '%s/' % baseurl
-        parsed_base = urlparse(baseurl).path
-        self.baseurl = '%s%s' % (self.url, parsed_base)
+        if not self.baseurl.endswith('/'):
+            self.baseurl = '%s/' % self.baseurl
+        self.path = urlparse(full_path).path
+
         if not self.path.startswith('/'):
             self.path = '/%s' % self.path
         if not self.path.endswith('/') and len(self.path) > 1:
             self.path = '%s/' % (self.path, )
 
-
-    def format_request(self, url, method='POST', data="", session=False):
-        assert(method in ['POST', 'DELETE'])
-        r_meth = {
-            'POST': HttpMethod.Post,
-            'DELETE': HttpMethod.Delete,
-        }
-        options = RequestOptions(url)
-        options.method = r_meth[method]
-        options.set_header("X-HTTP-Method", method)
-        options.set_header('Accept', 'application/json')
-        options.set_header('Content-Type', 'application/json')
-        self.request._authenticate_request(options)
-        self.request._ensure_form_digest(options)
-
-        if session:
-            return session.post(url, data=data, headers=options.headers, auth=options.auth, timeout=self.requests_timeout)
-
-        return requests.post(url, data=data, headers=options.headers, auth=options.auth, timeout=self.requests_timeout)
-
-    def parse_error(self, result):
-        try:
-            if 'application/json' in result.headers.get('Content-Type'):
-                resp_content = result.json()
-                msg = resp_content['odata.error']['message']
-                error = []
-                if isinstance(msg, dict):
-                    error = [msg['value']]
-                else:
-                    error = [msg]
-                if resp_content['odata.error'].get('code'):
-                    error.append('Code: %s' % resp_content['odata.error']['code'])
-                return ' '.join(error)
-        except:
-            pass
-        return result.content
-
     def create_folder(self, remote_path):
-        webUri = '%s%s' % (self.path, remote_path)
-        request_url = "%s_api/web/GetFolderByServerRelativeUrl('%s')" % (self.baseurl, webUri)
-        result = self.format_request(request_url, 'POST')
-        if result.status_code not in (200, 201):
-            result = self.format_request("%s_api/Web/Folders/add('%s')" % (self.baseurl, webUri), 'POST')
-            if result.status_code not in (200, 201):
-                raise Exception(self.parse_error(result))
+        if not self.folder_exists(remote_path):
+            self.request.web.get_folder_by_server_relative_url(self.path).add(remote_path).execute_query_with_incremental_retry(max_retry=self.max_retry)
         return True
 
     def delete(self, remote_path):
         webUri = '%s%s' % (self.path, remote_path)
-        request_url = "%s_api/web/getfilebyserverrelativeurl('%s')" % (self.baseurl, webUri)
-        result = self.format_request(request_url, 'DELETE')
-        if result.status_code not in (200, 201):
-            raise Exception(self.parse_error(result))
-        return True
+        return self.request.web.get_file_by_server_relative_url(webUri).delete_object().execute_query_with_incremental_retry(max_retry=self.max_retry)
 
     def move(self, remote_path, dest, retry=True):
+        # Move file to folder
         webUri = '%s%s' % (self.path, remote_path)
-        destUri = '%s%s' % (self.path, dest)
-        # falgs=1 to overwrite existing file
-        request_url = "%s_api/web/getfilebyserverrelativeurl('%s')/moveto(newurl='%s',flags=1)" % (self.baseurl, webUri, destUri)
-        result = self.format_request(request_url, 'POST')
-        if result.status_code not in (200, 201):
-            error = self.parse_error(result)
-            if retry and ('timed out' in error or '2130575252' in error):
-                logging.getLogger('cloud.backup').info('OneDrive move: session time out')
-                self.login()
-                return self.move(remote_path, dest, retry=False)
-            raise Exception(self.parse_error(result))
+
+        to_folder_dest = posixpath.join(self.path, dest)
+        self.request.web.get_file_by_server_relative_path(webUri).moveto(to_folder_dest, 1).execute_query_with_incremental_retry(max_retry=self.max_retry)
+        return True
+
+    def move_to_file(self, remote_path, dest):
+        webUri = '%s%s' % (self.path, remote_path)
+        full_name_dest = '/'.join([self.path, dest])
+
+        dest_file_name = full_name_dest.split('/')[-1]
+        dest_folder = '/'.join(full_name_dest.split('/')[0:-1])
+        self.request.web.get_file_by_server_relative_path(webUri).move_to_newname(dest_folder, dest_file_name, 1).execute_query_with_incremental_retry(max_retry=self.max_retry)
         return True
 
     def upload(self, fileobj, remote_path, buffer_size=None, log=False, progress_obj=False, continuation=False):
-        if not self.session_uuid:
-            self.session_uuid = uuid.uuid1()
+        split_name = remote_path.split('/')
+        new_file = split_name.pop()
+        split_name.insert(0, self.path)
+        path  = '/'.join(split_name)
+        if path[-1] != '/':
+            path += '/'
+
+        if buffer_size is None:
+            buffer_size = 10 * 1024 * 1024
 
         if progress_obj:
             log = True
+
+        report_method = None
+        def report_progress(uploaded, **a):
+            percent_txt = ''
+            if size:
+                percent = round(uploaded*100/size)
+                percent_txt = '%d%%' % percent
+                if progress_obj:
+                    progress_obj.write({'name': percent})
+
+            if logger:
+                logger.info('OneDrive: %d bytes sent on %s bytes %s' % (uploaded, size or 'unknown', percent_txt))
 
         if log:
             logger = logging.getLogger('cloud.backup')
@@ -162,119 +191,39 @@ class Client(object):
                 size = os.path.getsize(fileobj.name)
             except:
                 size = None
+            report_method = report_progress
 
-        if not continuation:
-            self.session_offset = -1
-
-        if self.session_offset != -1:
-            fileobj.seek(self.session_offset)
-
-        if not buffer_size:
-            buffer_size = 10* 1024 * 1024
-
-        x = ""
-        split_name = remote_path.split('/')
-        new_file = split_name.pop()
-        split_name.insert(0, self.path)
-        path  = '/'.join(split_name)
-        if path[-1] != '/':
-            path += '/'
-        webUri = '%s%s' % (path, new_file)
-        s = requests.Session()
-
-        while True:
-            if self.session_offset == -1:
-                # first loop create an empty file
-                request_url = "%s_api/web/GetFolderByServerRelativeUrl('%s')/Files/add(url='%s',overwrite=true)" % (self.baseurl, path, new_file)
-                self.session_offset = 0
-            else:
-                x = fileobj.read(buffer_size)
-                if not x:
-                    break
-                if not self.session_offset:
-                    # 2nd loop
-                    if len(x) == buffer_size:
-                        # split needed
-                        request_url="%s_api/web/getfilebyserverrelativeurl('%s')/startupload(uploadId=guid'%s')" % (self.baseurl, webUri, self.session_uuid)
-                    else:
-                        # file size < buffer: no need to split
-                        request_url = "%s_api/web/GetFolderByServerRelativeUrl('%s')/Files/add(url='%s',overwrite=true)" % (self.baseurl, path, new_file)
-                elif len(x) == buffer_size:
-                    request_url = "%s_api/web/getfilebyserverrelativeurl('%s')/continueupload(uploadId=guid'%s',fileOffset=%s)" % (self.baseurl, webUri, self.session_uuid, self.session_offset)
-                else:
-                    request_url = "%s_api/web/getfilebyserverrelativeurl('%s')/finishupload(uploadId=guid'%s',fileOffset=%s)" % (self.baseurl, webUri, self.session_uuid, self.session_offset)
-
-            result = self.format_request(request_url, method='POST', data=x, session=s)
-            if result.status_code not in (200, 201):
-                return (False, self.parse_error(result))
-            self.session_nb_error = 0
-            self.session_offset += len(x)
-
-            if log and self.session_offset and self.session_offset % (buffer_size*5) == 0:
-                percent_txt = ''
-                if size:
-                    percent = round(self.session_offset*100/size)
-                    percent_txt = '%d%%' % percent
-                    if progress_obj:
-                        progress_obj.write({'name': percent})
-
-                logger.info('OneDrive: %d bytes sent on %s bytes %s' % (self.session_offset, size or 'unknown', percent_txt))
-        self.session_offset = -1
-        return (True, '')
+        target_folder = self.request.web.get_folder_by_server_relative_url(path)
+        return target_folder.files.create_upload_session(
+            fileobj, buffer_size, chunk_uploaded=report_method, file_name=new_file
+        ).execute_query_with_incremental_retry(max_retry=self.max_retry)
 
     def list(self, remote_path):
         if not remote_path.startswith(self.path):
             remote_path = posixpath.join(self.path, remote_path)
-        request_url = "%s_api/web/getfolderbyserverrelativeurl('%s')/files" % (self.baseurl, remote_path)
-        options = RequestOptions(request_url)
-        options.method = HttpMethod.Get
-        options.set_header("X-HTTP-Method", "GET")
-        options.set_header('accept', 'application/json;odata=verbose')
-        self.request._authenticate_request(options)
-        self.request._ensure_form_digest(options)
-        result = requests.get(url=request_url, headers=options.headers, auth=options.auth)
-        if result.status_code not in (200, 201):
-            raise requests.exceptions.RequestException(self.parse_error(result))
+        return (
+            self.request.web.get_folder_by_server_relative_path(remote_path)
+            .get_files()
+            .expand(["TimeLastModified"])
+            .execute_query_retry(max_retry=self.max_retry)
+        )
 
-        result = result.json()
-        files=[]
-        for i in range(len(result['d']['results'])):
-            item = result['d']['results'][i]
-            files.append(item)
-        return files
-
+    def folder_exists(self, remote_path):
+        webUri = '%s%s' % (self.path, remote_path)
+        try:
+            self.request.web.get_folder_by_server_relative_url(webUri).get().execute_query_with_incremental_retry(max_retry=self.max_retry)
+        except ClientRequestException as e:
+            if e.response.status_code == 404:
+                return False
+            raise
+        return True
 
     def download(self, remote_path, filename):
         if not remote_path.startswith(self.path):
             remote_path = posixpath.join(self.path, remote_path)
-        request_url = "%s_api/web/getfilebyserverrelativeurl('%s')/$value" % (self.baseurl, remote_path)
-        options = RequestOptions(request_url)
-        options.method = HttpMethod.Get
-        options.set_header("X-HTTP-Method", "GET")
-        options.set_header('accept', 'application/json;odata=verbose')
-        retry = 5
-        while retry:
-            try:
-                self.request._authenticate_request(options)
-                self.request._ensure_form_digest(options)
-                with requests.get(url=request_url, headers=options.headers, auth=options.auth, stream=True, timeout=120) as r:
-                    if r.status_code not in (200, 201):
-                        error = self.parse_error(r)
-                        raise requests.exceptions.RequestException(error)
 
-                    with open(filename, 'wb') as file:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                file.write(chunk)
-            except requests.exceptions.RequestException:
-                time.sleep(3)
-                self.login()
-                retry -= 1
-                if not retry:
-                    raise
-                continue
-
-            retry = 0
-
+        src = self.request.web.get_file_by_server_relative_path(remote_path)
+        with open(filename, 'wb') as file:
+            src.download_session(file).execute_query_with_incremental_retry(max_retry=self.max_retry)
         return filename
 
