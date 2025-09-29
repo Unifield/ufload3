@@ -361,7 +361,7 @@ def instantiate(args, db):
             connection = transport.make_connection(host)
             connection.timeout = 4
             sock = xmlrpc.client.ServerProxy('http://%s:%s/xmlrpc/common' % (host, port), transport=transport)
-            uid = sock.login(db, args.adminuser.lower(), args.adminpw)
+            sock.login(db, args.adminuser.lower(), args.adminpw)
         except Exception as e:
             ufload3.progress("non blocking error at first connection %s" % e)
 
@@ -498,8 +498,8 @@ def delive(args, db):
             if args.db_prefix:
                 db_name = db_name.split(args.db_prefix+'_', 1)[1]
             new_pass_dict = []
-            for pass_part in re.split( '(\[\d+\+\d+\])', args.newuserspw):
-                m = re.search('\[(\d+)\+(\d+)\]', pass_part)
+            for pass_part in re.split(r'(\[\d+\+\d+\])', args.newuserspw):
+                m = re.search(r'\[(\d+)\+(\d+)\]', pass_part)
                 if m:
                     pos = int(m.group(1)) - 1
                     add = int(m.group(2))
@@ -511,7 +511,17 @@ def delive(args, db):
 
         for new_user_info in args.createusers.split(';'):
             new_user_data = new_user_info.split(':')
-            if len(new_user_data) == 3:
+            new_user_dpt = False
+            new_user_name = False
+            new_user_email = False
+            if len(new_user_data) == 6:
+                new_user = new_user_data[0]
+                new_user_name = new_user_data[1]
+                new_user_email = new_user_data[2]
+                new_user_dpt = new_user_data[3]
+                new_user_pass = new_user_data[4]
+                groups = new_user_data[5]
+            elif len(new_user_data) == 3:
                 new_user= new_user_data[0]
                 new_user_pass = new_user_data[1]
                 groups = new_user_data[2]
@@ -519,12 +529,25 @@ def delive(args, db):
                 new_user= new_user_data[0]
                 new_user_pass = newpass
                 groups = new_user_data[1]
+
+            if not new_user_name:
+                new_user_name = new_user
             rc, new_userid = psql(args, """ insert into res_users (name, active, login, password, context_lang, company_id, view, menu_id) values
                 ('%s', 't', '%s', '%s', 'en_MF', 1, 'simple', 1) returning id;"""
-                % (new_user, new_user.lower(), new_user_pass), db, silent=True)
+                % (new_user_name, new_user.lower(), new_user_pass), db, silent=True)
             if rc != 0:
                 return rc
-            for new_group in groups.split(','):
+            if new_user_dpt:
+                psql(args, """ update res_users u set context_department_id = d.id
+                    from hr_department d
+                    where d.name = '%s' and u.id = %s """ % (new_user_dpt, new_userid), db)
+
+            if new_user_email:
+                rc, address_id = psql(args, """ insert into res_partner_address (name, email) values ('%s', '%s') returning id """ % (new_user_name, new_user_email), db, silent=True)
+                if address_id:
+                    psql(args,"update res_users set address_id=%s where id=%s" % (address_id, new_userid), db)
+
+            for new_group in  groups.split(','):
                 rc = psql(args, " insert into res_groups_users_rel (uid, gid) (select %s, id from res_groups where name='%s');" % (new_userid, new_group), db)
                 if rc != 0:
                     return rc
@@ -608,7 +631,7 @@ def get_hwid(args):
         import winreg
         try:
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                                 "SYSTEM\ControlSet001\services\eventlog\Application\openerp-web-6.0",
+                                 r"SYSTEM\ControlSet001\services\eventlog\Application\openerp-web-6.0",
                                  0, winreg.KEY_READ) as registry_key:
                 hwid, regtype = winreg.QueryValueEx(registry_key, "HardwareId")
                 ufload3.progress("Hardware id from registry key: %s" % hwid)
