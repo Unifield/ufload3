@@ -494,9 +494,6 @@ def _cmdLs(args):
         ufload3.progress('Argument --cert-content or --cert-path is required for this sub-command.')
         return 2
 
-    if args.cert_path:
-        with open(args.cert_path, 'r') as c:
-            args.cert_content = c.read()
 
 
     if args.subdir is None:

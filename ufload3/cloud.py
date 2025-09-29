@@ -64,6 +64,10 @@ def get_cloud_info(args, sub_dir=''):
     except:
         #The argument cloudpath is not defined, forget about it (this is not the upgrade process)
         pass
+    
+    if args.cert_path:
+        with open(args.cert_path, 'r') as c:
+            args.cert_content = c.read()
 
     ret = {
         'url': args.cloud_url,
