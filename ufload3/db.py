@@ -391,6 +391,10 @@ def delive(args, db):
 
     rc = psql(args, 'alter table sync_client_sync_server_connection ADD COLUMN IF NOT EXISTS ufload_automatic_patching_prod_value boolean;', db)
     rc = psql(args, 'update sync_client_sync_server_connection set ufload_automatic_patching_prod_value=automatic_patching;', db)
+
+    rc = psql(args, 'alter table users_last_login ADD COLUMN IF NOT EXISTS date_prod_value timestamp without time zone;', db)
+    rc = psql(args, 'update users_last_login set date_prod_value=date;', db)
+
     rc = psql(args, 'update sync_client_sync_server_connection set automatic_patching = \'f\', protocol = \'xmlrpc\', login = \'%s\', database = \'%s\', host = \'127.0.0.1\', port = %d;' % (adminuser, ss, port), db)
     if rc != 0:
         return rc
