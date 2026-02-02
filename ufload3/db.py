@@ -94,7 +94,15 @@ def psql(args, sql, db='postgres', silent=False):
 
 def psql_file(args, file, db='postgres', silent=False):
     return _run(args, mkpsql_file(args, file, db), silent)
-    
+
+def _check_column_exists(args, table, column, db):
+    v = _run(args, mkpsql(args, """SELECT c.relname
+            FROM pg_class c, pg_attribute a
+            WHERE c.relname='%s' AND a.attname='%s' AND c.oid=a.attrelid;""" % (table, column), db), get_out=True)
+    if v and v[0] == 0:
+        return v[1].strip()
+    return False
+
 def load_zip_into(args, db, f, sz):
     if sz == 0:
         ufload3.progress("Note: No progress percent available.")
@@ -418,14 +426,23 @@ def delive(args, db):
     if rc != 0:
         return rc
     # Automated import settings
-    psql(args, 'UPDATE automated_import SET report_path=\'\', src_path=\'\', ftp_url=\'\', dest_path=\'\', ftp_ok=\'f\', ftp_port=\'\',dest_path_failure=\'\', ftp_login=\'\', ftp_password=\'\', ftp_protocol=\'\';', db)
+    psql(args, 'UPDATE automated_import SET active=\'f\', report_path=\'\', src_path=\'\', ftp_url=\'\', dest_path=\'\', ftp_ok=\'f\', ftp_port=\'\',dest_path_failure=\'\', ftp_login=\'\', ftp_password=\'\', ftp_protocol=\'\';', db)
+
+    if _check_column_exists(args, "automated_import", "sharepoint_cert", db):
+        psql(args, 'UPDATE automated_import SET sharepoint_cert=NULL;', db)
+
+    if _check_column_exists(args, "msf_instance", "cloud_cert_content", db):
+        psql(args, 'UPDATE msf_instance SET cloud_cert_content=NULL;', db)
+
+    if _check_column_exists(args, "automated_import", "email_notification_type", db):
+        psql(args, 'UPDATE automated_import set email=NULL, email2=NULL, email3=NULL;', db)
 
     # Automated export jobs
     rc = psql(args, 'update ir_cron set active = \'f\' where model = \'automated.export\';', db)
     if rc != 0:
         return rc
     # Automated export settings
-    psql(args, 'UPDATE automated_export SET report_path=\'\', ftp_url=\'\', dest_path=\'\', ftp_ok=\'f\', ftp_port=\'\',dest_path_failure=\'\', ftp_login=\'\', ftp_password=\'\', ftp_protocol=\'\';', db)
+    psql(args, 'UPDATE automated_export SET active=\'f\', report_path=\'\', ftp_url=\'\', dest_path=\'\', ftp_ok=\'f\', ftp_port=\'\',dest_path_failure=\'\', ftp_login=\'\', ftp_password=\'\', ftp_protocol=\'\';', db)
 
     # Now we check for arguments allowing auto-sync and silent-upgrade
     if args.autosync:
