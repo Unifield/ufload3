@@ -403,6 +403,9 @@ def delive(args, db):
     rc = psql(args, 'alter table users_last_login ADD COLUMN IF NOT EXISTS date_prod_value timestamp without time zone;', db)
     rc = psql(args, 'update users_last_login set date_prod_value=date;', db)
 
+    rc = psql(args, 'alter table res_users ADD COLUMN IF NOT EXISTS user_email_prod_value varchar(240);', db)
+    rc = psql(args, 'update res_users set user_email_prod_value=user_email;', db)
+
     rc = psql(args, 'update sync_client_sync_server_connection set automatic_patching = \'f\', protocol = \'xmlrpc\', login = \'%s\', database = \'%s\', host = \'127.0.0.1\', port = %d;' % (adminuser, ss, port), db)
     if rc != 0:
         return rc
