@@ -567,9 +567,7 @@ def delive(args, db):
                     where d.name = '%s' and u.id = %s """ % (new_user_dpt, new_userid), db)
 
             if new_user_email:
-                rc, address_id = psql(args, """ insert into res_partner_address (name, email) values ('%s', '%s') returning id """ % (new_user_name, new_user_email), db, silent=True)
-                if address_id:
-                    psql(args,"update res_users set address_id=%s where id=%s" % (address_id, new_userid), db)
+                psql(args,"update res_users set user_email='%s' where id = %s" % (new_user_email, new_userid), db)
 
             for new_group in  groups.split(','):
                 rc = psql(args, " insert into res_groups_users_rel (uid, gid) (select %s, id from res_groups where name='%s');" % (new_userid, new_group), db)
@@ -585,9 +583,7 @@ def delive(args, db):
                             where d.name = '%s' and u.login = '%s' """ % (new_user_dpt, login), db)
 
                 if new_user_email:
-                    rc, address_id = psql(args, """ insert into res_partner_address (name, email) values ('%s', '%s') returning id """ % (login, new_user_email), db, silent=True)
-                    if address_id:
-                        psql(args,"update res_users set address_id=%s where login='%s'" % (address_id, login), db)
+                    psql(args,"update res_users set user_email='%s' where login='%s'" % (new_user_email, login), db)
 
             except ValueError:
                 ufload3.progress("*** WARNING: invalid format %s" % userinfo)
