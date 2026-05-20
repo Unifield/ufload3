@@ -923,6 +923,7 @@ def parse():
 def main():
     global args
     args = parse()
+    rc = 1
     if hasattr(args, "func"):
         try:
             rc = args.func(args)

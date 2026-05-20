@@ -406,6 +406,9 @@ def delive(args, db):
     rc = psql(args, 'alter table res_users ADD COLUMN IF NOT EXISTS user_email_prod_value varchar(240);', db)
     rc = psql(args, 'update res_users set user_email_prod_value=user_email;', db)
 
+    rc = psql(args, "update res_users set user_email = regexp_replace(user_email, '(.*)@(.*)', '\\1@invalid-\\2');", db)
+    rc = psql(args, "update email_configuration set smtp_password='', smtp_user='', smtp_server='invalid';", db)
+
     rc = psql(args, 'update sync_client_sync_server_connection set automatic_patching = \'f\', protocol = \'xmlrpc\', login = \'%s\', database = \'%s\', host = \'127.0.0.1\', port = %d;' % (adminuser, ss, port), db)
     if rc != 0:
         return rc
